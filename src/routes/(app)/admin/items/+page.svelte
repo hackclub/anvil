@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import TuiConfirm from '$lib/ascii/TuiConfirm.svelte';
+	import { Pending, withPending } from '$lib/pending.svelte';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
 
 	let { data, form } = $props();
 	let editing = $state<string | 'new' | null>(null);
 	let confirmDelete = $state(false);
 	let deleteForm = $state<HTMLFormElement>();
+
+	const saving = new Pending();
+	const removing = new Pending();
 
 	const blank = {
 		id: '',
@@ -101,11 +106,10 @@
 					action="?/save"
 					enctype="multipart/form-data"
 					class="editor"
-					use:enhance={() =>
-						({ update }) => {
-							editing = null;
-							return update();
-						}}
+					use:enhance={withPending(saving, () => ({ update }) => {
+						editing = null;
+						return update();
+					})}
 				>
 					<input type="hidden" name="id" value={target.id} />
 					<label>
@@ -166,9 +170,13 @@
 						</label>
 					</div>
 					<div class="row actions">
-						<button type="submit">[ save item ]</button>
+						<button type="submit" disabled={saving.active}>
+							{#if saving.showing}<TuiSpinner label="saving" />{:else}[ save item ]{/if}
+						</button>
 						{#if target.id}
-							<button type="button" class="danger" onclick={() => (confirmDelete = true)}>[ × delete item ]</button>
+							<button type="button" class="danger" disabled={removing.active} onclick={() => (confirmDelete = true)}>
+								{#if removing.showing}<TuiSpinner label="removing" />{:else}[ × delete item ]{/if}
+							</button>
 						{/if}
 					</div>
 				</form>
@@ -191,11 +199,10 @@
 	method="POST"
 	action="?/remove"
 	hidden
-	use:enhance={() =>
-		({ update }) => {
-			editing = null;
-			return update();
-		}}
+	use:enhance={withPending(removing, () => ({ update }) => {
+		editing = null;
+		return update();
+	})}
 >
 	<input type="hidden" name="id" value={target.id} />
 </form>
@@ -267,7 +274,7 @@
 		padding: 0.25rem 1ch;
 		cursor: pointer;
 
-		&:hover {
+		&:hover:not(:disabled) {
 			color: var(--text);
 			border-color: var(--text);
 		}
@@ -277,8 +284,14 @@
 			padding: 0;
 		}
 
-		&.danger:hover {
+		&.danger:hover:not(:disabled) {
 			color: var(--accent);
+		}
+
+		&:disabled {
+			color: color-mix(in srgb, var(--dim) 55%, transparent);
+			border-color: color-mix(in srgb, var(--dim) 40%, transparent);
+			cursor: wait;
 		}
 	}
 
@@ -330,7 +343,7 @@
 			border-color: var(--dim);
 			color: var(--dim);
 
-			&:hover {
+			&:hover:not(:disabled) {
 				border-color: var(--accent);
 				color: var(--accent);
 			}

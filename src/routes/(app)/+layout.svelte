@@ -1,7 +1,21 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { navigating, page } from '$app/state';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
 
 	let { data, children } = $props();
+
+	// Delayed navigation indicator: only show loading UI when a page load has
+	// been pending for more than 100ms, so fast navigations stay silent.
+	let navSlow = $state(false);
+	$effect(() => {
+		if (navigating.to === null) {
+			navSlow = false;
+			return;
+		}
+
+		const t = setTimeout(() => (navSlow = true), 100);
+		return () => clearTimeout(t);
+	});
 
 	const tabs = [
 		{ href: '/dashboard', label: 'dashboard' },
@@ -28,6 +42,9 @@
 				<a href="/admin" class:active={page.url.pathname.startsWith('/admin')} class="admin">admin</a>
 			{/if}
 		</nav>
+		{#if navSlow}
+			<span class="navload"><TuiSpinner label="loading" /></span>
+		{/if}
 		<a class="balance" href="/shop" title="your sparks">
 			<span class="spark">✶</span>
 			{data.balance}
@@ -93,6 +110,10 @@
 				margin-left: auto;
 			}
 		}
+	}
+
+	.navload {
+		font-size: var(--fs-sm);
 	}
 
 	.balance {

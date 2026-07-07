@@ -2,8 +2,20 @@
 	import { enhance } from '$app/forms';
 	import PropSheet from '$lib/components/PropSheet.svelte';
 	import { EDITABLE } from '$lib/admin/editable';
+	import { Pending, withPending } from '$lib/pending.svelte';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
 
 	let { data, form } = $props();
+
+	const settingLevel = new Pending();
+	const unflagging = new Pending();
+	const unlocking = new Pending();
+	const linking = new Pending();
+	// per-row actions share one tracker + a marker for which row is in flight
+	const verifying = new Pending();
+	let verifyingId = $state<unknown>(null);
+	const unlinking = new Pending();
+	let unlinkingId = $state<unknown>(null);
 
 	const project = $derived(data.entities.project as Record<string, unknown>);
 	const sources = $derived(data.entities.tractionSources as Record<string, unknown>[]);
@@ -49,29 +61,48 @@
 
 	<div class="actions">
 		{#if form?.error}<span class="error">! {form.error}</span>{/if}
-		<form method="POST" action="?/setMaxLevel" use:enhance>
+		<form method="POST" action="?/setMaxLevel" use:enhance={withPending(settingLevel)}>
 			<label class="dim" for="level">max reviewed level</label>
 			<select name="level" id="level">
 				{#each [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as l (l)}
 					<option value={l} selected={l === project.maxReviewedLevel}>LVL {l}</option>
 				{/each}
 			</select>
-			<button type="submit">[ apply + recompute ]</button>
+			<button type="submit" disabled={settingLevel.active}>
+				{#if settingLevel.showing}<TuiSpinner label="recomputing" />{:else}[ apply + recompute ]{/if}
+			</button>
 		</form>
 		{#if project.scoreFlagged}
-			<form method="POST" action="?/unflag" use:enhance>
-				<button type="submit">[ clear velocity flag ]</button>
+			<form method="POST" action="?/unflag" use:enhance={withPending(unflagging)}>
+				<button type="submit" disabled={unflagging.active}>
+					{#if unflagging.showing}<TuiSpinner label="clearing" />{:else}[ clear velocity flag ]{/if}
+				</button>
 			</form>
 		{/if}
 		{#if project.locked}
-			<form method="POST" action="?/unlock" use:enhance>
-				<button type="submit">[ unlock (undo hard-reject) ]</button>
+			<form method="POST" action="?/unlock" use:enhance={withPending(unlocking)}>
+				<button type="submit" disabled={unlocking.active}>
+					{#if unlocking.showing}<TuiSpinner label="unlocking" />{:else}[ unlock (undo hard-reject) ]{/if}
+				</button>
 			</form>
 		{/if}
 		{#each sources.filter((s) => !s.verified) as s (s.id)}
-			<form method="POST" action="?/verifySource" use:enhance>
+			<form
+				method="POST"
+				action="?/verifySource"
+				use:enhance={withPending(verifying, () => {
+					verifyingId = s.id;
+					return ({ update }) => update();
+				})}
+			>
 				<input type="hidden" name="sourceId" value={s.id} />
-				<button type="submit">[ verify {s.kind}:{s.externalRef} ]</button>
+				<button type="submit" disabled={verifying.active}>
+					{#if verifying.showing && verifyingId === s.id}
+						<TuiSpinner label="verifying" />
+					{:else}
+						[ verify {s.kind}:{s.externalRef} ]
+					{/if}
+				</button>
 			</form>
 		{/each}
 	</div>
@@ -94,17 +125,32 @@
 					{#each data.hackatimeLinks as l (l.id)}
 						<li>
 							<span>{l.hackatimeKey}</span>
-							<form method="POST" action="?/unlinkKey" use:enhance>
+							<form
+								method="POST"
+								action="?/unlinkKey"
+								use:enhance={withPending(unlinking, () => {
+									unlinkingId = l.id;
+									return ({ update }) => update();
+								})}
+							>
 								<input type="hidden" name="linkId" value={l.id} />
-								<button type="submit" class="danger">[ unlink ]</button>
+								<button type="submit" class="danger" disabled={unlinking.active}>
+									{#if unlinking.showing && unlinkingId === l.id}
+										<TuiSpinner label="unlinking" />
+									{:else}
+										[ unlink ]
+									{/if}
+								</button>
 							</form>
 						</li>
 					{/each}
 				</ul>
 			{/if}
-			<form method="POST" action="?/linkKey" class="addkey" use:enhance>
+			<form method="POST" action="?/linkKey" class="addkey" use:enhance={withPending(linking)}>
 				<input name="key" placeholder="hackatime key to link (on the user's behalf)" required />
-				<button type="submit">[ + link ]</button>
+				<button type="submit" disabled={linking.active}>
+					{#if linking.showing}<TuiSpinner label="linking" />{:else}[ + link ]{/if}
+				</button>
 			</form>
 		</div>
 	</details>
@@ -188,9 +234,15 @@
 		padding: 0.25rem 1ch;
 		cursor: pointer;
 
-		&:hover {
+		&:hover:not(:disabled) {
 			color: var(--accent);
 			border-color: var(--accent);
+		}
+
+		&:disabled {
+			color: color-mix(in srgb, var(--dim) 55%, transparent);
+			border-color: color-mix(in srgb, var(--dim) 40%, transparent);
+			cursor: wait;
 		}
 	}
 
@@ -222,7 +274,7 @@
 			align-items: center;
 		}
 
-		.danger:hover {
+		.danger:hover:not(:disabled) {
 			color: var(--accent);
 			border-color: var(--accent);
 		}

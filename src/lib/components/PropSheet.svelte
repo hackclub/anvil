@@ -4,9 +4,15 @@
 	// in place with a type-aware editor. Enter commits, Esc cancels; enums and
 	// booleans commit on change. Commits POST to the host page's ?/setField
 	// action and reload data. Fields without a spec render read-only.
+	//
+	// Commits are optimistic: the new value shows immediately and the editor
+	// closes; on failure the editor reopens with the draft and an error. A
+	// "saving" spinner only appears if the round trip exceeds 100ms.
 	import { deserialize } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { FieldSpec } from '$lib/admin/editable';
+	import { Pending } from '$lib/pending.svelte';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
 
 	interface Props {
 		/** entity kind - the key the server's setField validates against */
@@ -21,9 +27,33 @@
 
 	let editing = $state<string | null>(null);
 	let draft = $state('');
-	let busy = $state(false);
 	let err = $state<string | null>(null);
 	let flash = $state<string | null>(null); // field that just saved
+
+	// optimistic layer: field -> value shown before the server confirms
+	let overrides = $state<Record<string, unknown>>({});
+	// per-field in-flight save trackers (delayed spinners)
+	let saving = $state<Record<string, Pending>>({});
+
+	const shown = (field: string): unknown => (field in overrides ? overrides[field] : data[field]);
+
+	// what the optimistic value will look like once the server echoes it back
+	const parseDraft = (field: string, value: string | null): unknown => {
+		const spec = editable[field];
+		if (value === null || !spec) return value;
+
+		switch (spec.type) {
+			case 'boolean':
+				return value === 'true';
+			case 'int':
+			case 'number': {
+				const n = Number(value);
+				return Number.isNaN(n) ? value : n;
+			}
+			default:
+				return value;
+		}
+	};
 
 	const typeLabel = (f: string): string => {
 		const spec = editable[f];
@@ -41,11 +71,11 @@
 	};
 
 	function begin(field: string) {
-		if (!editable[field] || busy) return;
+		if (!editable[field] || saving[field]?.active) return;
 
 		editing = field;
 		err = null;
-		const v = data[field];
+		const v = shown(field);
 		draft = v === null || v === undefined ? '' : String(v);
 	}
 
@@ -55,8 +85,16 @@
 	}
 
 	async function commit(field: string, value: string | null) {
-		busy = true;
 		err = null;
+
+		// optimistic: show the new value and close the editor right away
+		overrides[field] = parseDraft(field, value);
+		editing = null;
+		flash = field;
+		setTimeout(() => (flash = null), 1200);
+
+		const pending = (saving[field] ??= new Pending());
+
 		try {
 			const fd = new FormData();
 			fd.set('kind', kind);
@@ -68,28 +106,37 @@
 				fd.set('value', value);
 			}
 
-			const resp = await fetch('?/setField', {
-				method: 'POST',
-				body: fd,
-				headers: { 'x-sveltekit-action': 'true' }
-			});
+			const resp = await pending.track(
+				fetch('?/setField', {
+					method: 'POST',
+					body: fd,
+					headers: { 'x-sveltekit-action': 'true' }
+				})
+			);
 
 			const result = deserialize(await resp.text());
 			if (result.type === 'success') {
-				editing = null;
-				flash = field;
-				setTimeout(() => (flash = null), 1200);
 				await invalidateAll();
-			} else if (result.type === 'failure') {
-				err = String(result.data?.error ?? 'update failed');
+				delete overrides[field];
 			} else {
-				err = 'update failed';
+				rollback(
+					field,
+					value,
+					result.type === 'failure' ? String(result.data?.error ?? 'update failed') : 'update failed'
+				);
 			}
 		} catch {
-			err = 'update failed - network?';
-		} finally {
-			busy = false;
+			rollback(field, value, 'update failed - network?');
 		}
+	}
+
+	// undo the optimistic value and reopen the editor with the rejected draft
+	function rollback(field: string, value: string | null, message: string) {
+		delete overrides[field];
+		flash = null;
+		editing = field;
+		draft = value ?? '';
+		err = message;
 	}
 
 	function onKeydown(e: KeyboardEvent, field: string) {
@@ -121,8 +168,7 @@
 					{#if spec.type === 'boolean'}
 						<select
 							class="ed"
-							value={String(data[field] ?? 'false')}
-							disabled={busy}
+							value={String(shown(field) ?? 'false')}
 							onchange={(e) => commit(field, e.currentTarget.value)}
 							onkeydown={(e) => e.key === 'Escape' && cancel()}
 						>
@@ -132,8 +178,7 @@
 					{:else if spec.type === 'enum'}
 						<select
 							class="ed"
-							value={String(data[field] ?? spec.options[0])}
-							disabled={busy}
+							value={String(shown(field) ?? spec.options[0])}
 							onchange={(e) => commit(field, e.currentTarget.value)}
 							onkeydown={(e) => e.key === 'Escape' && cancel()}
 						>
@@ -147,7 +192,6 @@
 							class="ed"
 							rows="3"
 							bind:value={draft}
-							disabled={busy}
 							autofocus
 							onkeydown={(e) => onKeydown(e, field)}></textarea>
 					{:else}
@@ -155,7 +199,6 @@
 						<input
 							class="ed"
 							bind:value={draft}
-							disabled={busy}
 							autofocus
 							spellcheck="false"
 							autocomplete="off"
@@ -164,19 +207,21 @@
 					{/if}
 					<span class="edbtns">
 						{#if spec.type !== 'boolean' && spec.type !== 'enum'}
-							<button type="button" disabled={busy} onclick={() => commit(field, draft)}>[ save ]</button>
+							<button type="button" onclick={() => commit(field, draft)}>[ save ]</button>
 						{/if}
 						{#if 'nullable' in spec && spec.nullable}
-							<button type="button" disabled={busy} onclick={() => commit(field, null)}>[ set null ]</button>
+							<button type="button" onclick={() => commit(field, null)}>[ set null ]</button>
 						{/if}
-						<button type="button" disabled={busy} onclick={cancel}>[ esc ]</button>
+						<button type="button" onclick={cancel}>[ esc ]</button>
 					</span>
 					{#if err}<span class="err">! {err}</span>{/if}
 				</span>
 			{:else}
-				<span class="value" class:nul={data[field] == null}>
-					{show(data[field])}
-					{#if spec}
+				<span class="value" class:nul={shown(field) == null}>
+					{show(shown(field))}
+					{#if saving[field]?.showing}
+						<TuiSpinner label="saving" />
+					{:else if spec}
 						<button class="editbtn" type="button" onclick={() => begin(field)}>[ edit ]</button>
 					{/if}
 				</span>

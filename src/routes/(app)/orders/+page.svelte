@@ -2,6 +2,8 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import TuiConfirm from '$lib/ascii/TuiConfirm.svelte';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
+	import { Pending, withPending } from '$lib/pending.svelte';
 
 	let { data, form } = $props();
 
@@ -24,6 +26,18 @@
 	let pending = $state<Order | null>(null);
 	let confirmOpen = $state(false);
 	let cancelForm = $state<HTMLFormElement>();
+
+	// cancel is optimistic: the row flips to cancelled the moment the user
+	// confirms; if the server disagrees (e.g. fulfillment raced us) the
+	// refreshed data restores it and form.error explains
+	let cancellingId = $state<number | null>(null);
+	const cancelling = new Pending();
+	const statusOf = (o: Order) => (o.id === cancellingId ? 'cancelled' : o.status);
+
+	// note saves: delayed spinner + brief "saved" flash
+	let savingNoteId = $state<number | null>(null);
+	let savedNoteId = $state<number | null>(null);
+	const savingNote = new Pending();
 </script>
 
 <svelte:head>
@@ -60,12 +74,16 @@
 							<span class="spark">✶</span>
 							{o.totalPrice}
 						</span>
-						<span class="status" data-status={o.status}>{o.status}</span>
+						<span class="status" data-status={statusOf(o)}>{statusOf(o)}</span>
+						{#if cancelling.showing && o.id === cancellingId}
+							<TuiSpinner label="cancelling" />
+						{/if}
 						<span class="dim date">{fmtDate(o.createdAt)}</span>
-						{#if o.status === 'pending'}
+						{#if statusOf(o) === 'pending'}
 							<button
 								class="cancel"
 								type="button"
+								disabled={cancelling.active}
 								onclick={() => {
 									pending = o;
 									confirmOpen = true;
@@ -75,9 +93,22 @@
 							</button>
 						{/if}
 					</div>
-					{#if o.status === 'pending'}
+					{#if statusOf(o) === 'pending'}
 						<!-- notes stay editable until fulfillment picks the order up -->
-						<form method="POST" action="?/note" class="noteform" use:enhance>
+						<form
+							method="POST"
+							action="?/note"
+							class="noteform"
+							use:enhance={withPending(savingNote, () => {
+								savingNoteId = o.id;
+								return async ({ update }) => {
+									await update({ reset: false });
+									savingNoteId = null;
+									savedNoteId = o.id;
+									setTimeout(() => (savedNoteId = null), 1200);
+								};
+							})}
+						>
 							<input type="hidden" name="orderId" value={o.id} />
 							<span class="dim">↳</span>
 							<input
@@ -86,7 +117,13 @@
 								placeholder="notes for the team? (e.g. 'the red one please!')"
 								maxlength="500"
 							/>
-							<button type="submit">[ save note ]</button>
+							{#if savingNote.showing && savingNoteId === o.id}
+								<TuiSpinner label="saving" />
+							{:else if savedNoteId === o.id}
+								<span class="okay">✓ saved</span>
+							{:else}
+								<button type="submit" disabled={savingNote.active}>[ save note ]</button>
+							{/if}
 						</form>
 					{:else if o.userNotes}
 						<p class="note">
@@ -106,11 +143,12 @@
 	method="POST"
 	action="?/cancel"
 	hidden
-	use:enhance={() =>
-		({ update }) => {
-			invalidateAll();
-			return update();
-		}}
+	use:enhance={withPending(cancelling, () => async ({ update }) => {
+		invalidateAll();
+		await update();
+		// server truth is in - drop the optimistic override either way
+		cancellingId = null;
+	})}
 >
 	<input type="hidden" name="orderId" value={pending?.id ?? ''} />
 </form>
@@ -124,7 +162,10 @@
 		: ''}
 	yesLabel="× yes, cancel it"
 	noLabel="keep the order!"
-	onyes={() => cancelForm?.requestSubmit()}
+	onyes={() => {
+		cancellingId = pending?.id ?? null;
+		cancelForm?.requestSubmit();
+	}}
 />
 
 <style>
@@ -234,8 +275,12 @@
 			cursor: pointer;
 			white-space: nowrap;
 
-			&:hover {
+			&:hover:not(:disabled) {
 				color: var(--accent);
+			}
+
+			&:disabled {
+				cursor: wait;
 			}
 		}
 	}
@@ -249,8 +294,12 @@
 		color: var(--dim);
 		cursor: pointer;
 
-		&:hover {
+		&:hover:not(:disabled) {
 			color: var(--accent);
+		}
+
+		&:disabled {
+			cursor: wait;
 		}
 	}
 

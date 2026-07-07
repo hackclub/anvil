@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { onMount } from 'svelte';
 	import { measureCharWidth } from './measureChar';
+	import { Pending, withPending } from '$lib/pending.svelte';
 
 	export interface ShipCheckRow {
 		id: string;
@@ -54,7 +55,8 @@
 	// same airy grid as the project page: rows are 1.25 cells tall
 	const rowH = $derived(Math.round(cell * 1.25));
 	let hovered = $state<string | null>(null);
-	let confirming = $state(false);
+	// label swaps to "shipping..." only past 100ms; the button locks instantly
+	const confirming = new Pending();
 	let tick = $state(0); // animation clock (~9fps, terminal cadence)
 
 	const fmtHM = (s: number) => {
@@ -422,11 +424,11 @@
 			btnBand([
 				{
 					id: 'confirm',
-					label: confirming ? 'shipping...' : `▸ confirm ship - ${fmtHM(totalSeconds)}`,
+					label: confirming.showing ? 'shipping...' : `▸ confirm ship - ${fmtHM(totalSeconds)}`,
 					type: 'confirm',
 					primary: true,
 					fullWidth: true,
-					disabled: confirming
+					disabled: confirming.active
 				}
 			]);
 
@@ -530,17 +532,7 @@
 				onpointerleave={() => (hovered = null)}
 			></button>
 		{:else}
-			<form
-				method="POST"
-				action="?/confirm"
-				use:enhance={() => {
-					confirming = true;
-					return async ({ update }) => {
-						confirming = false;
-						await update();
-					};
-				}}
-			>
+			<form method="POST" action="?/confirm" use:enhance={withPending(confirming)}>
 				<button
 					class="hs"
 					aria-label={h.label}

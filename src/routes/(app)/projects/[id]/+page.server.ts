@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
 import { requireProject } from '$lib/server/projects';
 import { currentWindow, hackatimeIdentity, projectKeys } from '$lib/server/ships/queries';
@@ -220,32 +220,52 @@ export const actions: Actions = {
 		return { questDone: questId };
 	},
 
-	toggleKey: async ({ locals, params, request }) => {
+	// the gate selector stages toggles locally; "confirm selection" commits
+	// the full selection here in one payload (link + unlink as a diff)
+	setKeys: async ({ locals, params, request }) => {
 		const user = locals.user!;
 		const project = await requireProject(params.id, user);
 		const form = await request.formData();
-		const key = String(form.get('key') ?? '');
-		if (!key) return fail(400, { error: 'missing hackatime key' });
+		const keys = [...new Set(form.getAll('keys').map(String).filter(Boolean))];
+		if (keys.length === 0) return fail(400, { error: 'select at least one hackatime project' });
 
-		const [existing] = await db()
-			.select()
+		if (keys.length > 200) return fail(400, { error: 'too many keys' });
+
+		// keys feeding the user's OTHER projects can't be claimed
+		const taken = await db()
+			.select({ key: schema.hackatimeProjectLinks.hackatimeKey })
 			.from(schema.hackatimeProjectLinks)
-			.where(and(eq(schema.hackatimeProjectLinks.userId, user.id), eq(schema.hackatimeProjectLinks.hackatimeKey, key)));
+			.innerJoin(schema.projects, eq(schema.hackatimeProjectLinks.projectId, schema.projects.id))
+			.where(
+				and(
+					eq(schema.hackatimeProjectLinks.userId, user.id),
+					ne(schema.hackatimeProjectLinks.projectId, project.id),
+					isNull(schema.projects.deletedAt),
+					inArray(schema.hackatimeProjectLinks.hackatimeKey, keys)
+				)
+			);
 
-		if (existing) {
-			if (existing.projectId !== project.id) {
-				return fail(400, { error: `"${key}" is already linked to another project` });
-			}
-
-			await db().delete(schema.hackatimeProjectLinks).where(eq(schema.hackatimeProjectLinks.id, existing.id));
-		} else {
-			await db()
-				.insert(schema.hackatimeProjectLinks)
-				.values({ userId: user.id, projectId: project.id, hackatimeKey: key })
-				.onConflictDoNothing();
+		if (taken.length > 0) {
+			return fail(400, { error: `"${taken[0].key}" is already linked to another project` });
 		}
 
-		return { toggled: true };
+		await db().transaction(async (tx) => {
+			await tx
+				.delete(schema.hackatimeProjectLinks)
+				.where(
+					and(
+						eq(schema.hackatimeProjectLinks.projectId, project.id),
+						notInArray(schema.hackatimeProjectLinks.hackatimeKey, keys)
+					)
+				);
+
+			await tx
+				.insert(schema.hackatimeProjectLinks)
+				.values(keys.map((key) => ({ userId: user.id, projectId: project.id, hackatimeKey: key })))
+				.onConflictDoNothing();
+		});
+
+		return { keysSet: true };
 	},
 
 	findHackatime: async ({ locals }) => {

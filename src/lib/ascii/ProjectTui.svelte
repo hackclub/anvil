@@ -8,6 +8,7 @@
 	import { onMount } from 'svelte';
 	import TuiConfirm from './TuiConfirm.svelte';
 	import { measureCharWidth } from './measureChar';
+	import { Pending, withPending } from '$lib/pending.svelte';
 
 	export interface KeyInfo {
 		key: string;
@@ -164,7 +165,37 @@
 
 	const fmtSparks = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2));
 
-	const totalSeconds = $derived(linkedKeys.reduce((a, k) => a + k.seconds, 0));
+	// selecting hackatime projects is a blocking step for FRESH projects only:
+	// a draft with nothing selected shows ONLY the selector until the selection
+	// is confirmed. everywhere else (under review, rejected, approved, locked)
+	// the selector never appears - key management lives on the edit page.
+	// intentionally captures the INITIAL state: staging keys mid-gate must
+	// not auto-dismiss the step.
+	// svelte-ignore state_referenced_locally
+	let confirmed = $state(linkedKeys.length > 0 || project.shipStatus !== 'draft' || project.locked);
+
+	// the gate selector edits a LOCAL selection - toggles never hit the
+	// network; "confirm selection" saves the whole set in one ?/setKeys
+	// payload. initial selection = whatever is already linked server-side.
+	// svelte-ignore state_referenced_locally
+	let staged = $state<string[]>(linkedKeys.map((k) => k.key));
+
+	// a staged key borrows its season seconds until the server reports
+	// window seconds after the selection is confirmed
+	const stagedSeconds = (key: string): number =>
+		linkedKeys.find((k) => k.key === key)?.seconds ?? availableKeys.find((k) => k.key === key)?.seconds ?? 0;
+
+	// what drives hours/shippability: the saved links once the gate is
+	// passed, the staged selection while the selector is still open
+	const effLinkedKeys = $derived.by((): KeyInfo[] =>
+		confirmed ? linkedKeys : staged.map((key) => ({ key, seconds: stagedSeconds(key) }))
+	);
+
+	const totalSeconds = $derived(effLinkedKeys.reduce((a, k) => a + k.seconds, 0));
+
+	function toggleStaged(key: string) {
+		staged = staged.includes(key) ? staged.filter((k) => k !== key) : [...staged, key];
+	}
 
 	// ONE stable list: keys never move when toggled - the checkbox flips in
 	// place. Linked keys show window seconds; the rest show season totals.
@@ -176,7 +207,7 @@
 	}
 
 	const listKeys = $derived.by((): ListKey[] => {
-		const linkedMap = new Map(linkedKeys.map((k) => [k.key, k.seconds]));
+		const linkedMap = new Map(effLinkedKeys.map((k) => [k.key, k.seconds]));
 		const rows: ListKey[] = availableKeys.map((k) => ({
 			key: k.key,
 			linked: linkedMap.has(k.key),
@@ -184,7 +215,7 @@
 			assignedTo: assignedElsewhere[k.key]
 		}));
 		// linked keys hackatime no longer reports still need to be unlinkable
-		for (const lk of linkedKeys) {
+		for (const lk of effLinkedKeys) {
 			if (!rows.some((r) => r.key === lk.key)) {
 				rows.push({ key: lk.key, linked: true, seconds: lk.seconds });
 			}
@@ -199,7 +230,7 @@
 
 	const inFlight = $derived(project.shipStatus === 'pending' || project.shipStatus === 'pending_hq');
 
-	const canShip = $derived(!project.locked && !inFlight && linkedKeys.length > 0 && totalSeconds >= minShipSeconds);
+	const canShip = $derived(!project.locked && !inFlight && effLinkedKeys.length > 0 && totalSeconds >= minShipSeconds);
 	// quest completion goes through the TUI confirm; share quests collect the
 	// proof URL via the modal's input, and only a "yes" submits the form
 	let questPending = $state<QuestInfo | null>(null);
@@ -212,15 +243,16 @@
 	// cancelling a pending ship goes through the danger confirm
 	let cancelShipOpen = $state(false);
 	let cancelShipForm = $state<HTMLFormElement>();
+	const cancellingShip = new Pending();
 
-	// selecting hackatime projects is a blocking step for FRESH projects only:
-	// a draft with nothing selected shows ONLY the selector until the selection
-	// is confirmed. everywhere else (under review, rejected, approved, locked)
-	// the selector never appears - key management lives on the edit page.
-	// intentionally captures the INITIAL state: toggling keys mid-gate must
-	// not auto-dismiss the step.
-	// svelte-ignore state_referenced_locally
-	let confirmed = $state(linkedKeys.length > 0 || project.shipStatus !== 'draft' || project.locked);
+	// slow-network feedback for the other actions (labels swap after 100ms)
+	const finding = new Pending();
+	const questing = new Pending();
+
+	// "confirm selection" submits this - saving the staged keys is what
+	// dismisses the gate, so a failure keeps the selector open
+	let keysForm = $state<HTMLFormElement>();
+	const confirmingSel = new Pending();
 
 	// ── the guide buddy (ascii kaomoji only - no emojis in the terminal!) ──
 	type Seg = { text: string; cls?: string };
@@ -250,7 +282,7 @@
 		if (!confirmed) {
 			// the blocking step - the rest of the page stays hidden until the
 			// selection is confirmed
-			if (linkedKeys.length === 0) {
+			if (effLinkedKeys.length === 0) {
 				return {
 					face: '[ -w- ]',
 					segs: [
@@ -624,7 +656,12 @@
 			// a PENDING ship can be pulled back (e.g. to fix metadata);
 			// pending_hq means a reviewer already approved it - too late
 			if (project.shipStatus === 'pending') {
-				btns.push({ id: 'cancelShip', label: '× cancel ship', type: 'cancelShip' });
+				btns.push({
+					id: 'cancelShip',
+					label: cancellingShip.showing ? 'cancelling...' : '× cancel ship',
+					type: 'cancelShip',
+					disabled: cancellingShip.active
+				});
 			}
 
 			if (project.repoUrl) {
@@ -640,7 +677,7 @@
 		}
 
 		// ship-blocked hint (when the buddy isn't already explaining it)
-		if (confirmed && !canShip && !project.locked && !inFlight && linkedKeys.length > 0) {
+		if (confirmed && !canShip && !project.locked && !inFlight && effLinkedKeys.length > 0) {
 			row(
 				s(
 					`track at least ${Math.round(minShipSeconds / 60)} minutes to ship - ${fmtHM(totalSeconds)} counted so far.`,
@@ -653,7 +690,7 @@
 
 		// ── hackatime (the blocking step - hidden once confirmed) ────────
 		if (!confirmed) {
-			const nothingTracked = hasHackatime && linkedKeys.length === 0 && availableKeys.length === 0;
+			const nothingTracked = hasHackatime && effLinkedKeys.length === 0 && availableKeys.length === 0;
 			// center a line within the window
 			const ctr = (str: string, cls = ''): number => {
 				const pad = Math.max(0, Math.floor((inner - str.length) / 2));
@@ -717,7 +754,7 @@
 				blank();
 				row(s('tracked a little time already?', 'c1'));
 				// '»' not '↻' - the refresh arrow isn't in JetBrains Mono (drift!)
-				const lbl = '[ » look for my hackatime ]';
+				const lbl = finding.showing ? '[ » looking for you... ]' : '[ » look for my hackatime ]';
 				hot({
 					id: 'findHackatime',
 					type: 'findHackatime',
@@ -780,7 +817,7 @@
 							x: 2,
 							w: inner,
 							key: k.key,
-							label: `${k.linked ? 'unlink' : 'link'} ${k.key}`
+							label: `${k.linked ? 'deselect' : 'select'} ${k.key}`
 						});
 
 						const hov = hovered === id;
@@ -825,14 +862,15 @@
 
 			blank();
 
-			// confirm the selection - greyed out until at least one key is picked
+			// confirm the selection - greyed out until at least one key is picked;
+			// this SAVES the staged selection, so it locks while the save runs
 			btnBand([
 				{
 					id: 'confirm',
-					label: '▸ confirm selection',
+					label: confirmingSel.showing ? 'confirming...' : '▸ confirm selection',
 					type: 'confirm',
 					primary: true,
-					disabled: linkedKeys.length === 0,
+					disabled: staged.length === 0 || confirmingSel.active,
 					fullWidth: true
 				}
 			]);
@@ -1216,17 +1254,27 @@
 				class="hs"
 				aria-label={h.label}
 				{style}
-				onclick={() => (h.type === 'confirm' ? (confirmed = true) : bumpScroll(h.type === 'scrollUp' ? -1 : 1))}
+				onclick={() => (h.type === 'confirm' ? keysForm?.requestSubmit() : bumpScroll(h.type === 'scrollUp' ? -1 : 1))}
+				onpointerenter={() => (hovered = h.id)}
+				onpointerleave={() => (hovered = null)}
+			></button>
+		{:else if h.type === 'toggleKey'}
+			<!-- staged locally - the confirm button saves the whole selection -->
+			<button
+				class="hs"
+				aria-label={h.label}
+				{style}
+				onclick={() => h.key && toggleStaged(h.key)}
 				onpointerenter={() => (hovered = h.id)}
 				onpointerleave={() => (hovered = null)}
 			></button>
 		{:else}
-			<form method="POST" action={h.type === 'toggleKey' ? '?/toggleKey' : '?/findHackatime'} use:enhance>
-				{#if h.key}<input type="hidden" name="key" value={h.key} />{/if}
+			<form method="POST" action="?/findHackatime" use:enhance={withPending(finding)}>
 				<button
 					class="hs"
 					aria-label={h.label}
 					{style}
+					disabled={finding.active}
 					onpointerenter={() => (hovered = h.id)}
 					onpointerleave={() => (hovered = null)}
 				></button>
@@ -1250,8 +1298,32 @@
 	{/if}
 </div>
 
+<!-- the gate's "confirm selection" submits this: the staged keys, one payload.
+     success dismisses the gate; failure keeps the selector open (the parent
+     page renders form.error) -->
+<form
+	bind:this={keysForm}
+	method="POST"
+	action="?/setKeys"
+	hidden
+	use:enhance={withPending(confirmingSel, () => async ({ result, update }) => {
+		await update();
+		if (result.type === 'success') confirmed = true;
+	})}
+>
+	{#each staged as key (key)}
+		<input type="hidden" name="keys" value={key} />
+	{/each}
+</form>
+
 <!-- submitted only via the cancel-ship confirm dialog's "yes" -->
-<form bind:this={cancelShipForm} method="POST" action="?/cancelShip" hidden use:enhance></form>
+<form
+	bind:this={cancelShipForm}
+	method="POST"
+	action="?/cancelShip"
+	hidden
+	use:enhance={withPending(cancellingShip)}
+></form>
 
 <TuiConfirm
 	bind:open={cancelShipOpen}
@@ -1269,16 +1341,15 @@
 	method="POST"
 	action="?/quest"
 	hidden
-	use:enhance={() =>
-		async ({ result, update }) => {
-			if (result.type === 'failure') {
-				questError = String(result.data?.error ?? 'something went wrong - try again!');
-			} else {
-				questError = null;
-				questConfirmOpen = false;
-				await update();
-			}
-		}}
+	use:enhance={withPending(questing, () => async ({ result, update }) => {
+		if (result.type === 'failure') {
+			questError = String(result.data?.error ?? 'something went wrong - try again!');
+		} else {
+			questError = null;
+			questConfirmOpen = false;
+			await update();
+		}
+	})}
 >
 	<input type="hidden" name="questId" value={questPending?.id ?? ''} />
 	<input type="hidden" name="proofUrl" value={questProof} />
@@ -1294,11 +1365,14 @@
 		message={`${questPending.title}! ${questPending.note ?? ''}`}
 		input={questPending.kind === 'share' ? 'paste the link to your post here!' : undefined}
 		bind:inputValue={questProof}
-		yesLabel={questPending.kind === 'share'
-			? '▸ submit my post'
-			: questPending.kind === 'readme-mention'
-				? '▸ check my README'
-				: '▸ check my repo'}
+		busy={questing.active}
+		yesLabel={questing.showing
+			? 'checking...'
+			: questPending.kind === 'share'
+				? '▸ submit my post'
+				: questPending.kind === 'readme-mention'
+					? '▸ check my README'
+					: '▸ check my repo'}
 		noLabel="not yet!"
 		onyes={() => questForm?.requestSubmit()}
 	/>
