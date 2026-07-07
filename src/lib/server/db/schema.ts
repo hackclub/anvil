@@ -304,8 +304,9 @@ export const currencyLedger = pgTable(
 );
 
 // One-time promotion quests ("share it on Reddit", "polish your repo").
-// The unique (project, quest) pair is the idempotency anchor for the ✦1
-// earn_quest ledger payout. Quests unlock after the first approved ship.
+// The unique (project, quest) pair is the idempotency anchor for the SCORE
+// bounty (see economy/quests.ts) - quests pay SCORE, never sparks directly.
+// Quests unlock after the first approved ship.
 export const projectQuests = pgTable(
 	'project_quests',
 	{

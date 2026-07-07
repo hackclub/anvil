@@ -154,7 +154,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			catalog: QUESTS.map((q) => ({
 				id: q.id,
 				title: q.title,
-				sparks: q.sparks,
+				score: q.score,
 				kind: q.kind,
 				note: q.note ?? null
 			}))
@@ -203,7 +203,7 @@ export const actions: Actions = {
 		return { shipCancelled: true };
 	},
 
-	// complete a promotion quest (✦1 bounty, once per project per quest)
+	// complete a promotion quest (SCORE bounty, once per project per quest)
 	quest: async ({ locals, params, request }) => {
 		const project = await requireProject(params.id, locals.user!);
 		const form = await request.formData();
