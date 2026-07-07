@@ -30,6 +30,8 @@ COPY drizzle ./drizzle
 COPY drizzle.config.ts ./drizzle.config.ts
 
 ENV PORT=3000
+# adapter-node defaults to 512KiB; shop item thumbnail uploads need more
+ENV BODY_SIZE_LIMIT=4194304
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
