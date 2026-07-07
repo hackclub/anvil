@@ -83,17 +83,14 @@
 	<button class="ghost" onclick={() => (editing = editing === 'new' ? null : 'new')}>[ + new item ]</button>
 
 	{#if editing}
-		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<!-- escape-to-close is handled on the window below -->
-		<div class="backdrop" role="presentation" onclick={() => (editing = null)}>
-			<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<!-- background click intentionally does not close this - escape or the [x] button does -->
+		<div class="backdrop">
 			<div
 				class="panel"
 				role="dialog"
 				aria-modal="true"
 				aria-label={editing === 'new' ? 'new item' : `edit ${target.name}`}
 				tabindex="-1"
-				onclick={(e) => e.stopPropagation()}
 			>
 				<div class="paneltop">
 					<span class="dim">$</span>
