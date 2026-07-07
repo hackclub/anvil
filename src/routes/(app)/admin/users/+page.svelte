@@ -1,8 +1,25 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { Pending, withPending } from '$lib/pending.svelte';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
 
 	let { data, form } = $props();
 	let expanded = $state<number | null>(null);
+
+	// one tracker per action; the forms render once per expanded row, so a
+	// single "which user" marker keeps spinners on the right row
+	const fetchingHca = new Pending();
+	const banning = new Pending();
+	const unbanning = new Pending();
+	const adjusting = new Pending();
+	const savingNotes = new Pending();
+	let pendingUser = $state<number | null>(null);
+
+	const forUser = (pending: Pending, userId: number) =>
+		withPending(pending, () => {
+			pendingUser = userId;
+			return ({ update }) => update();
+		});
 </script>
 
 <svelte:head>
@@ -75,9 +92,15 @@
 								<dd>{u.hackatimeId ?? '∅'}</dd>
 							</dl>
 
-							<form method="POST" action="?/hcaInfo" use:enhance>
+							<form method="POST" action="?/hcaInfo" use:enhance={forUser(fetchingHca, u.id)}>
 								<input type="hidden" name="userId" value={u.id} />
-								<button type="submit">[ view hca info ]</button>
+								<button type="submit" disabled={fetchingHca.active}>
+									{#if fetchingHca.showing && pendingUser === u.id}
+										<TuiSpinner label="fetching" />
+									{:else}
+										[ view hca info ]
+									{/if}
+								</button>
 							</form>
 							{#if form?.hcaInfo?.userId === u.id}
 								<dl class="idlist hcainfo">
@@ -158,32 +181,56 @@
 							</p>
 							{#if u.isBanned}
 								<p class="dim">ban reason: {u.banReason}</p>
-								<form method="POST" action="?/unban" use:enhance>
+								<form method="POST" action="?/unban" use:enhance={forUser(unbanning, u.id)}>
 									<input type="hidden" name="userId" value={u.id} />
-									<button type="submit">[ unban ]</button>
+									<button type="submit" disabled={unbanning.active}>
+										{#if unbanning.showing && pendingUser === u.id}
+											<TuiSpinner label="unbanning" />
+										{:else}
+											[ unban ]
+										{/if}
+									</button>
 								</form>
 							{:else}
-								<form method="POST" action="?/ban" use:enhance>
+								<form method="POST" action="?/ban" use:enhance={forUser(banning, u.id)}>
 									<input type="hidden" name="userId" value={u.id} />
 									<input name="reason" placeholder="ban reason (required)" required />
-									<button type="submit" class="danger">[ ban ]</button>
+									<button type="submit" class="danger" disabled={banning.active}>
+										{#if banning.showing && pendingUser === u.id}
+											<TuiSpinner label="banning" />
+										{:else}
+											[ ban ]
+										{/if}
+									</button>
 								</form>
 							{/if}
-							<form method="POST" action="?/adjust" use:enhance>
+							<form method="POST" action="?/adjust" use:enhance={forUser(adjusting, u.id)}>
 								<input type="hidden" name="userId" value={u.id} />
 								<input name="amount" type="number" step="0.01" placeholder="±sparks" required />
 								<input name="note" placeholder="why (required)" required />
-								<button type="submit">[ adjust balance ]</button>
+								<button type="submit" disabled={adjusting.active}>
+									{#if adjusting.showing && pendingUser === u.id}
+										<TuiSpinner label="adjusting" />
+									{:else}
+										[ adjust balance ]
+									{/if}
+								</button>
 							</form>
 
 							<p class="subhead">
 								<span class="dim">//</span>
 								notes
 							</p>
-							<form method="POST" action="?/notes" use:enhance>
+							<form method="POST" action="?/notes" use:enhance={forUser(savingNotes, u.id)}>
 								<input type="hidden" name="userId" value={u.id} />
 								<input name="notes" value={u.internalNotes ?? ''} placeholder="internal notes" />
-								<button type="submit">[ save notes ]</button>
+								<button type="submit" disabled={savingNotes.active}>
+									{#if savingNotes.showing && pendingUser === u.id}
+										<TuiSpinner label="saving" />
+									{:else}
+										[ save notes ]
+									{/if}
+								</button>
 							</form>
 						</td>
 					</tr>
@@ -228,12 +275,12 @@
 		padding: 0.25rem 1ch;
 		cursor: pointer;
 
-		&:hover {
+		&:hover:not(:disabled) {
 			color: var(--text);
 			border-color: var(--text);
 		}
 
-		&.danger:hover {
+		&.danger:hover:not(:disabled) {
 			color: var(--accent);
 			border-color: var(--accent);
 		}
@@ -241,6 +288,12 @@
 		&.ghost {
 			border: none;
 			padding: 0;
+		}
+
+		&:disabled {
+			color: color-mix(in srgb, var(--dim) 55%, transparent);
+			border-color: color-mix(in srgb, var(--dim) 40%, transparent);
+			cursor: wait;
 		}
 	}
 

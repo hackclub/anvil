@@ -8,8 +8,10 @@
 	// picked file (object URL) or the currently stored one.
 	import { enhance } from '$app/forms';
 	import { onMount } from 'svelte';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import TuiConfirm from './TuiConfirm.svelte';
 	import { measureCharWidth } from './measureChar';
+	import { Pending, withPending } from '$lib/pending.svelte';
 
 	export interface KeyInfo {
 		key: string;
@@ -72,7 +74,9 @@
 	const rowH = $derived(Math.round(cell * 1.25));
 	let hovered = $state<string | null>(null);
 	let focusedField = $state<string | null>(null);
-	let saving = $state(false);
+	// slow-network feedback: labels swap only after 100ms in flight
+	const saving = new Pending();
+	const deleting = new Pending();
 	let pickedName = $state('');
 	let pickedUrl = $state<string | null>(null);
 	let scroll = $state(0); // hackatime list scroll offset
@@ -102,15 +106,49 @@
 		assignedTo?: string;
 	}
 
+	// optimistic key toggles, same contract as the project page: the checkbox
+	// flips immediately; the override drops once the server round-trip lands
+	// (fresh data then agrees - or the checkbox visibly reverts on failure)
+	let keyOverrides = $state<Record<string, boolean>>({});
+	let keyBusy = $state<Record<string, boolean>>({});
+
+	const effLinked = $derived.by((): string[] => {
+		const out = linked.filter((k) => keyOverrides[k] !== false);
+		for (const [key, isLinked] of Object.entries(keyOverrides)) {
+			if (isLinked && !out.includes(key)) out.push(key);
+		}
+
+		return out;
+	});
+
+	// one toggle per key in flight - the server action is a toggle, so a
+	// double-fire would undo itself
+	function toggleKeyEnhance(key: string): SubmitFunction {
+		return ({ cancel }) => {
+			if (keyBusy[key]) {
+				cancel();
+				return;
+			}
+
+			keyBusy[key] = true;
+			keyOverrides[key] = !effLinked.includes(key);
+			return async ({ update }) => {
+				await update();
+				delete keyOverrides[key];
+				delete keyBusy[key];
+			};
+		};
+	}
+
 	const listKeys = $derived.by((): ListKey[] => {
 		const rows: ListKey[] = available.map((k) => ({
 			key: k.key,
-			linked: linked.includes(k.key),
+			linked: effLinked.includes(k.key),
 			seconds: k.seconds,
 			assignedTo: assignedElsewhere[k.key]
 		}));
 		// linked keys hackatime no longer reports still need to be unlinkable
-		for (const lk of linked) {
+		for (const lk of effLinked) {
 			if (!rows.some((r) => r.key === lk)) {
 				rows.push({ key: lk, linked: true, seconds: 0 });
 			}
@@ -431,10 +469,10 @@
 		btnBand([
 			{
 				id: 'save',
-				label: saving ? 'saving...' : '▸ save changes',
+				label: saving.showing ? 'saving...' : '▸ save changes',
 				type: 'save',
 				primary: true,
-				disabled: saving
+				disabled: saving.active
 			}
 		]);
 
@@ -443,7 +481,14 @@
 		// ── danger zone ───────────────────────────────────────────────────
 		rule('danger');
 		blank();
-		btnBand([{ id: 'delete', label: '× delete project', type: 'delete' }]);
+		btnBand([
+			{
+				id: 'delete',
+				label: deleting.showing ? 'deleting...' : '× delete project',
+				type: 'delete',
+				disabled: deleting.active
+			}
+		]);
 		blank();
 
 		rows.push([...s('╰'), ...s('─'.repeat(W - 2)), ...s('╯')]);
@@ -531,19 +576,7 @@
 
 	<!-- the update form itself is empty except the hidden file input; all
 	     visible inputs attach to it via form="editform" -->
-	<form
-		id="editform"
-		method="POST"
-		action="?/update"
-		enctype="multipart/form-data"
-		use:enhance={() => {
-			saving = true;
-			return async ({ update }) => {
-				saving = false;
-				await update();
-			};
-		}}
-	>
+	<form id="editform" method="POST" action="?/update" enctype="multipart/form-data" use:enhance={withPending(saving)}>
 		<input
 			bind:this={fileEl}
 			type="file"
@@ -556,7 +589,7 @@
 	</form>
 
 	<!-- submitted ONLY via the TUI confirm dialog's "yes" -->
-	<form bind:this={deleteForm} method="POST" action="?/delete" use:enhance hidden></form>
+	<form bind:this={deleteForm} method="POST" action="?/delete" use:enhance={withPending(deleting)} hidden></form>
 
 	{#each built.inputs as slot (slot.name)}
 		{#if slot.name === 'title'}
@@ -624,7 +657,7 @@
 				onpointerleave={() => (hovered = null)}
 			></button>
 		{:else if h.type === 'toggleKey'}
-			<form method="POST" action="?/toggleKey" use:enhance>
+			<form method="POST" action="?/toggleKey" use:enhance={h.key ? toggleKeyEnhance(h.key) : undefined}>
 				<input type="hidden" name="key" value={h.key} />
 				<button
 					class="hs"

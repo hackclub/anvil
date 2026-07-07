@@ -2,6 +2,8 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import TuiConfirm from '$lib/ascii/TuiConfirm.svelte';
+	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
+	import { Pending, withPending } from '$lib/pending.svelte';
 
 	let { data, form } = $props();
 
@@ -15,6 +17,11 @@
 	let confirmOpen = $state(false);
 	let orderNote = $state('');
 	let buyForm = $state<HTMLFormElement>();
+
+	// purchases are NOT optimistic (they can fail on stock/balance) - instead
+	// the ordered card shows a spinner once the wait passes 100ms, and all
+	// order buttons lock to prevent double-orders
+	const placing = new Pending();
 
 	const categories = $derived(['all', ...new Set(data.items.map((i) => i.category ?? 'other'))]);
 
@@ -107,9 +114,18 @@
 					{#if form?.error && form?.itemId === item.id}
 						<p class="error">! {form.error}</p>
 					{/if}
-					<button class="order" type="button" disabled={data.balance < item.price} onclick={() => askToOrder(item)}>
-						{data.balance >= item.price ? '[ ▸ order ]' : '[ not enough sparks ]'}
-					</button>
+					{#if placing.showing && pending?.id === item.id}
+						<span class="order ordering"><TuiSpinner label="ordering" /></span>
+					{:else}
+						<button
+							class="order"
+							type="button"
+							disabled={data.balance < item.price || placing.active}
+							onclick={() => askToOrder(item)}
+						>
+							{data.balance >= item.price ? '[ ▸ order ]' : '[ not enough sparks ]'}
+						</button>
+					{/if}
 				</div>
 			</li>
 		{/each}
@@ -122,11 +138,10 @@
 	method="POST"
 	action="?/purchase"
 	hidden
-	use:enhance={() =>
-		({ update }) => {
-			invalidateAll();
-			return update();
-		}}
+	use:enhance={withPending(placing, () => ({ update }) => {
+		invalidateAll();
+		return update();
+	})}
 >
 	<input type="hidden" name="itemId" value={pending?.id ?? ''} />
 	<input type="hidden" name="quantity" value="1" />
@@ -279,6 +294,11 @@
 	.price {
 		color: var(--accent);
 		font-weight: 700;
+	}
+
+	.ordering {
+		border-color: var(--dim);
+		cursor: wait;
 	}
 
 	.order {

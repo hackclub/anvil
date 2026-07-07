@@ -20,6 +20,8 @@
 		error?: string | null;
 		/** set false to keep the dialog open on yes (parent closes on success) */
 		closeOnYes?: boolean;
+		/** while true, yes is inert - guards dialogs that stay open during a submit */
+		busy?: boolean;
 		/** called when the user confirms - the dialog closes either way */
 		onyes?: () => void;
 	}
@@ -36,6 +38,7 @@
 		danger = false,
 		error = null,
 		closeOnYes = true,
+		busy = false,
 		onyes
 	}: Props = $props();
 
@@ -239,6 +242,8 @@
 
 	function choose(id: 'yes' | 'no') {
 		if (id === 'yes') {
+			if (busy) return;
+
 			if (closeOnYes) {
 				open = false;
 				hovered = null;

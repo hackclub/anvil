@@ -1,5 +1,13 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
+	import { Pending, withPending } from '$lib/pending.svelte';
+
 	let { data, form } = $props();
+
+	// both gates poll external systems (hackatime, HCA) - slow by nature, so
+	// swap the button label once the wait passes 100ms
+	const finding = new Pending();
+	const checking = new Pending();
 
 	const status = $derived(data.user.verificationStatus);
 
@@ -64,9 +72,11 @@
 				{@render box('▸ create my hackatime account')}
 			</a>
 
-			<form method="POST" action="?/findHackatime">
-				<button class="boxbtn" type="submit">{@render box('» i made one - find it!')}</button>
-				{#if form?.hkNotFound}
+			<form method="POST" action="?/findHackatime" use:enhance={withPending(finding)}>
+				<button class="boxbtn" type="submit" disabled={finding.active}>
+					{@render box(finding.showing ? '» looking for you...' : '» i made one - find it!')}
+				</button>
+				{#if form?.hkNotFound && !finding.active}
 					<span class="dim">hmm, still can't find you - sign in with the same account!</span>
 				{/if}
 			</form>
@@ -82,9 +92,11 @@
 				{@render box('▸ verify my identity')}
 			</a>
 
-			<form method="POST" action="?/refresh">
-				<button class="boxbtn" type="submit">{@render box('» re-check my status')}</button>
-				{#if form?.refreshed}
+			<form method="POST" action="?/refresh" use:enhance={withPending(checking)}>
+				<button class="boxbtn" type="submit" disabled={checking.active}>
+					{@render box(checking.showing ? '» checking...' : '» re-check my status')}
+				</button>
+				{#if form?.refreshed && !checking.active}
 					<span class="dim">checked just now</span>
 				{/if}
 			</form>
@@ -155,9 +167,13 @@
 			color: var(--accent);
 		}
 
-		&:hover pre {
+		&:hover:not(:disabled) pre {
 			background: var(--accent);
 			color: var(--bg);
+		}
+
+		&:disabled {
+			cursor: wait;
 		}
 	}
 
@@ -177,7 +193,7 @@
 		.boxbtn {
 			color: var(--dim);
 
-			&:hover {
+			&:hover:not(:disabled) {
 				color: var(--text);
 
 				pre {

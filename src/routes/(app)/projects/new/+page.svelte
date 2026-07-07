@@ -4,11 +4,13 @@
 	// overlays the middle row of its drawn box. Mono grid: positions in ch,
 	// rows are 1.25em tall like every other TUI here.
 	import { enhance } from '$app/forms';
+	import { Pending, withPending } from '$lib/pending.svelte';
 
 	let { form } = $props();
 
 	let focused = $state(false);
-	let creating = $state(false);
+	// button locks instantly; label swaps to "creating" only past 100ms
+	const creating = new Pending();
 
 	const W = 48; // prompt box width in cells
 	const BTN = '▸ create';
@@ -24,17 +26,7 @@
 		anvil new
 	</p>
 
-	<form
-		method="POST"
-		action="?/create"
-		use:enhance={() => {
-			creating = true;
-			return async ({ update }) => {
-				creating = false;
-				await update();
-			};
-		}}
-	>
+	<form method="POST" action="?/create" use:enhance={withPending(creating)}>
 		{#if form?.error}
 			<p class="error">! {form.error}</p>
 		{/if}
@@ -58,8 +50,8 @@
 			/>
 		</div>
 
-		<button type="submit" class="boxbtn" disabled={creating}>
-			<pre>{`╭${'─'.repeat(BTN.length + 2)}╮\n│ ${creating ? 'creating' : BTN} │\n╰${'─'.repeat(
+		<button type="submit" class="boxbtn" disabled={creating.active}>
+			<pre>{`╭${'─'.repeat(BTN.length + 2)}╮\n│ ${creating.showing ? 'creating' : BTN} │\n╰${'─'.repeat(
 					BTN.length + 2
 				)}╯`}</pre>
 		</button>
