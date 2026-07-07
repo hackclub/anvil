@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { SPARKS_PER_USD } from '$lib/config/economy';
 import { computeTopups, type ApprovedShipEarn } from './topup';
 
-// level rates (economy.ts): LVL 1-3 → $3, 4-6 → $5, 7-9 → $7.5, 10 → $10
+// level rates (economy.ts), in dollars: LVL 1-3 → $3, 4-6 → $5, 7-9 → $7.5, 10 → $10
+// - amounts are paid in sparks, so expectations scale by SPARKS_PER_USD.
+const usd = (n: number) => n * SPARKS_PER_USD;
+
 const ship = (over: Partial<ApprovedShipEarn> = {}): ApprovedShipEarn => ({
 	shipId: 1,
 	userId: 1,
@@ -15,14 +19,14 @@ describe('computeTopups', () => {
 	test('level rise pays the delta on already-paid hours', () => {
 		const rows = computeTopups([ship()], 4);
 		expect(rows).toHaveLength(1);
-		expect(rows[0].amount).toBe(20); // (5 - 3) × 10h
+		expect(rows[0].amount).toBe(usd(20)); // (5 - 3) × 10h
 		expect(rows[0].level).toBe(4);
 	});
 
 	test('skipped levels produce ONE delta row at the new level', () => {
 		const rows = computeTopups([ship()], 10);
 		expect(rows).toHaveLength(1);
-		expect(rows[0].amount).toBe(70); // (10 - 3) × 10h
+		expect(rows[0].amount).toBe(usd(70)); // (10 - 3) × 10h
 	});
 
 	test('levels sharing a rate produce no rows', () => {
@@ -46,14 +50,14 @@ describe('computeTopups', () => {
 	test('invariant: total paid ≡ hours × rate[current level]', () => {
 		// earn_ship at LVL1 (3×h) + topups must always equal rate[final] × h
 		const h = 10;
-		const base = 3 * h;
+		const base = usd(3 * h);
 		const rows = computeTopups([ship()], 7);
-		expect(base + rows[0].amount).toBe(7.5 * h);
+		expect(base + rows[0].amount).toBe(usd(7.5 * h));
 	});
 
 	test('multiple ships each get their own row', () => {
 		const rows = computeTopups([ship(), ship({ shipId: 2, hoursAssigned: 4, paidLevel: 4 })], 7);
 		expect(rows).toHaveLength(2);
-		expect(rows[1].amount).toBe(10); // (7.5 - 5) × 4h
+		expect(rows[1].amount).toBe(usd(10)); // (7.5 - 5) × 4h
 	});
 });
