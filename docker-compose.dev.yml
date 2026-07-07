@@ -1,0 +1,16 @@
+# Local dev database only — production Postgres lives on Coolify.
+#   docker compose -f docker-compose.dev.yml up -d
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: anvil
+      POSTGRES_PASSWORD: anvil
+      POSTGRES_DB: anvil
+    ports:
+      - '5432:5432'
+    volumes:
+      - anvil-pgdata:/var/lib/postgresql/data
+
+volumes:
+  anvil-pgdata:

@@ -1,0 +1,7 @@
+# the marketing site is fair game; the app + api are not useful to crawlers
+User-agent: *
+Disallow: /admin
+Disallow: /api
+Disallow: /uploads
+
+Sitemap: https://anvil.hackclub.com/sitemap.xml

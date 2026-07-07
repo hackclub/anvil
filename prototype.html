@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>ysws // ascii prototype</title>
+		<style>
+			:root {
+				--bg: #17171d;
+				--text: #f5f5f0;
+				--accent: #ec3750;
+				--dim: #6a6a76;
+				--cell: 12px; /* font size */
+				--line: 11px; /* line height */
+			}
+			* {
+				box-sizing: border-box;
+				margin: 0;
+				padding: 0;
+			}
+			html,
+			body {
+				height: 100%;
+				background: var(--bg);
+				color: var(--text);
+				font-family: 'SFMono-Regular', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+				overflow: hidden;
+				cursor: crosshair;
+			}
+
+			/* the ambient ASCII field */
+			#field {
+				position: fixed;
+				inset: 0;
+				font-size: var(--cell);
+				line-height: var(--line);
+				letter-spacing: 0;
+				color: var(--dim);
+				white-space: pre;
+				user-select: none;
+				z-index: 0;
+				transition: color 0.4s ease;
+			}
+			/* chromatic split, only enabled for the glitch palette */
+			body.chroma #field {
+				text-shadow:
+					-1px 0 rgba(0, 255, 255, 0.5),
+					1px 0 rgba(255, 0, 128, 0.5);
+			}
+			body.crt #field,
+			body.crt #card {
+				text-shadow: 0 0 6px currentColor;
+			}
+
+			/* the terminal card floating in the void */
+			#card {
+				position: fixed;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				z-index: 2;
+				font-size: 14px;
+				line-height: 1.5;
+				color: var(--text);
+				white-space: pre;
+				text-align: left;
+				padding: 4px 0;
+			}
+			#card .bar {
+				color: var(--accent);
+			}
+			#card .brd {
+				color: var(--dim);
+			}
+			#card .tag {
+				color: var(--accent);
+				font-weight: bold;
+			}
+			#card .body {
+				color: var(--text);
+			}
+			#card .muted {
+				color: var(--dim);
+			}
+
+			.row {
+				display: block;
+			}
+
+			/* terminal-native buttons: invert on hover/focus */
+			.btn {
+				display: inline-block;
+				color: var(--accent);
+				background: transparent;
+				border: 0;
+				font: inherit;
+				padding: 0 2px;
+				cursor: pointer;
+				outline: none;
+				text-decoration: none;
+			}
+			.btn:hover,
+			.btn:focus {
+				color: var(--bg);
+				background: var(--accent);
+			}
+			/* blinking block cursor that trails the focused button */
+			.btn:focus::after,
+			.btn:hover::after {
+				content: '\2588';
+				margin-left: 2px;
+				animation: blink 1s steps(1) infinite;
+			}
+			@keyframes blink {
+				50% {
+					opacity: 0;
+				}
+			}
+
+			/* hud */
+			#hud {
+				position: fixed;
+				bottom: 10px;
+				left: 12px;
+				z-index: 3;
+				font-size: 11px;
+				color: var(--dim);
+				user-select: none;
+				line-height: 1.6;
+			}
+			#hud b {
+				color: var(--accent);
+			}
+			#fps {
+				position: fixed;
+				top: 8px;
+				right: 12px;
+				z-index: 3;
+				font-size: 11px;
+				color: var(--dim);
+			}
+		</style>
+	</head>
+	<body>
+		<pre id="field"></pre>
+
+		<div id="card">
+			<span class="row brd">╭────────────────────────────────────────╮</span>
+			<span class="row">
+				<span class="brd">│</span>
+				<span class="bar">┤ ysws.exe ├</span>
+				<span class="brd">│</span>
+			</span>
+			<span class="row brd">├────────────────────────────────────────┤</span>
+			<span class="row">
+				<span class="brd">│</span>
+				<span class="tag">▓▓ THE-YSWS-NAME ▓▓</span>
+				<span class="body"></span>
+				<span class="brd">│</span>
+			</span>
+			<span class="row"><span class="brd">│ │</span></span>
+			<span class="row">
+				<span class="brd">│</span>
+				<span class="body">build &lt;a thing&gt;, we ship you &lt;reward&gt;</span>
+				<span class="brd">│</span>
+			</span>
+			<span class="row">
+				<span class="brd">│</span>
+				<span class="muted">$ shipped: 000 · deadline: soon.exe</span>
+				<span class="brd">│</span>
+			</span>
+			<span class="row"><span class="brd">│ │</span></span>
+			<span class="row">
+				<span class="brd">│</span>
+				<a href="#" class="btn">[ &gt; ship it ]</a>
+				<span class="body"></span>
+				<a href="#" class="btn">[ docs ]</a>
+				<span class="body"></span>
+				<a href="#" class="btn">[ #slack ]</a>
+				<span class="brd">│</span>
+			</span>
+			<span class="row brd">╰────────────────────────────────────────╯</span>
+		</div>
+
+		<div id="hud">
+			palette:
+			<b id="palname">hack club red</b>
+			&nbsp;
+			<span class="muted">
+				press
+				<b>1</b>
+				-
+				<b>4</b>
+				to switch ·
+				<b>g</b>
+				glitch ·
+				<b>m</b>
+				move mouse
+			</span>
+		</div>
+		<div id="fps">-- fps</div>
+
+		<script>
+			(() => {
+				const field = document.getElementById('field');
+				const fpsEl = document.getElementById('fps');
+				const palnameEl = document.getElementById('palname');
+
+				// ---- palettes ---------------------------------------------------------
+				const palettes = [
+					{
+						name: 'hack club red',
+						bg: '#17171d',
+						text: '#f5f5f0',
+						accent: '#ec3750',
+						dim: '#5a5a66',
+						cls: ''
+					},
+					{
+						name: 'phosphor green',
+						bg: '#000000',
+						text: '#33ff66',
+						accent: '#7dffab',
+						dim: '#166b32',
+						cls: 'crt'
+					},
+					{
+						name: 'amber mono',
+						bg: '#0d0700',
+						text: '#ffb000',
+						accent: '#ffd67a',
+						dim: '#6b4a00',
+						cls: 'crt'
+					},
+					{
+						name: 'rgb glitch',
+						bg: '#0a0a0f',
+						text: '#ffffff',
+						accent: '#00e6e6',
+						dim: '#4a4a5a',
+						cls: 'chroma'
+					}
+				];
+				let palIdx = 0;
+				function applyPalette(i) {
+					palIdx = (i + palettes.length) % palettes.length;
+					const p = palettes[palIdx];
+					const r = document.documentElement.style;
+					r.setProperty('--bg', p.bg);
+					r.setProperty('--text', p.text);
+					r.setProperty('--accent', p.accent);
+					r.setProperty('--dim', p.dim);
+					document.body.className = p.cls;
+					palnameEl.textContent = p.name;
+				}
+				applyPalette(0);
+
+				// ---- grid sizing ------------------------------------------------------
+				let cols = 0,
+					rows = 0,
+					charW = 7,
+					charH = 11;
+				function measure() {
+					const probe = document.createElement('span');
+					probe.style.cssText =
+						'position:absolute;visibility:hidden;font-size:var(--cell);line-height:var(--line);white-space:pre;font-family:inherit';
+					probe.textContent = 'M'.repeat(100);
+					field.appendChild(probe);
+					charW = probe.getBoundingClientRect().width / 100;
+					probe.remove();
+					charH = parseFloat(getComputedStyle(field).lineHeight) || 11;
+					cols = Math.ceil(window.innerWidth / charW) + 1;
+					rows = Math.ceil(window.innerHeight / charH) + 1;
+				}
+				measure();
+				window.addEventListener('resize', measure);
+
+				// ---- cheap value-noise "shader" --------------------------------------
+				function hash(x, y) {
+					const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+					return n - Math.floor(n);
+				}
+				function smooth(t) {
+					return t * t * (3 - 2 * t);
+				}
+				function noise(x, y) {
+					const xi = Math.floor(x),
+						yi = Math.floor(y);
+					const xf = x - xi,
+						yf = y - yi;
+					const a = hash(xi, yi),
+						b = hash(xi + 1, yi);
+					const c = hash(xi, yi + 1),
+						d = hash(xi + 1, yi + 1);
+					const u = smooth(xf),
+						v = smooth(yf);
+					return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+				}
+				function fbm(x, y) {
+					let v = 0,
+						amp = 0.6,
+						freq = 1;
+					for (let o = 0; o < 3; o++) {
+						v += amp * noise(x * freq, y * freq);
+						freq *= 2.1;
+						amp *= 0.5;
+					}
+					return v;
+				}
+
+				const RAMP = ' ·.·:-=+*oO#%@';
+
+				// ---- mouse ------------------------------------------------------------
+				const mouse = { x: -999, y: -999 };
+				window.addEventListener('mousemove', (e) => {
+					mouse.x = e.clientX / charW;
+					mouse.y = e.clientY / charH;
+				});
+
+				// ---- glitch -----------------------------------------------------------
+				let glitchOn = true;
+				const GLYPHS = '!<>-_\\/[]{}=+*^?#________';
+				let glitchTimer = 0,
+					glitchRows = [];
+
+				// ---- render loop ------------------------------------------------------
+				let t = 0,
+					last = performance.now(),
+					frames = 0,
+					fpsAcc = 0;
+
+				function frame(now) {
+					const dt = Math.min(50, now - last) / 1000;
+					last = now;
+					t += dt;
+
+					// card "void" rectangle in cell coords (a touch larger than the DOM card)
+					const cardCols = 48,
+						cardRows = 13;
+					const cx = cols / 2,
+						cy = rows / 2;
+					const halfW = cardCols / 2,
+						halfH = cardRows / 2;
+
+					// glitch scheduling
+					glitchTimer -= dt;
+					if (glitchOn && glitchTimer <= 0) {
+						glitchTimer = 0.15 + Math.abs(hash(t * 13, 7)) * 0.9;
+						glitchRows = [];
+						const n = 1 + Math.floor(Math.abs(hash(t * 7, 3)) * 3);
+						for (let k = 0; k < n; k++) glitchRows.push(Math.floor(Math.abs(hash(t * 5 + k, k)) * rows));
+					}
+
+					let out = '';
+					for (let y = 0; y < rows; y++) {
+						const glitched = glitchRows.includes(y);
+						for (let x = 0; x < cols; x++) {
+							// aspect-corrected sampling (monospace cells are ~2:1 tall)
+							const nx = x * 0.09;
+							const ny = y * 0.16;
+							let v = fbm(nx + t * 0.25, ny - t * 0.18);
+							v = v * v * 1.6; // bias toward sparse/dark field
+
+							// mouse bloom
+							const md = Math.hypot((x - mouse.x) * 0.5, y - mouse.y);
+							if (md < 10) v += (1 - md / 10) * 0.6;
+
+							// carve the void for the card (soft dithered edge)
+							const dx = Math.abs(x - cx) - halfW;
+							const dy = Math.abs(y - cy) - halfH;
+							const edge = Math.max(dx, dy);
+							if (edge < 0) {
+								out += ' ';
+								continue;
+							}
+							if (edge < 3) v *= smooth(edge / 3) * (hash(x, y + Math.floor(t * 4)) > 0.35 ? 1 : 0);
+
+							let idx = Math.max(0, Math.min(RAMP.length - 1, Math.floor(v * RAMP.length)));
+							let ch = RAMP[idx];
+							if (glitched && ch !== ' ' && hash(x, y) > 0.4)
+								ch = GLYPHS[Math.floor(hash(x * 3, y * 7) * GLYPHS.length)];
+							out += ch;
+						}
+						out += '\n';
+					}
+					field.textContent = out;
+
+					// fps
+					frames++;
+					fpsAcc += dt;
+					if (fpsAcc >= 0.5) {
+						fpsEl.textContent = Math.round(frames / fpsAcc) + ' fps · ' + cols + '×' + rows;
+						frames = 0;
+						fpsAcc = 0;
+					}
+
+					requestAnimationFrame(frame);
+				}
+				requestAnimationFrame(frame);
+
+				// ---- keys -------------------------------------------------------------
+				window.addEventListener('keydown', (e) => {
+					if (e.key >= '1' && e.key <= '4') applyPalette(parseInt(e.key) - 1);
+					if (e.key === 'g') glitchOn = !glitchOn;
+				});
+			})();
+		</script>
+	</body>
+</html>
