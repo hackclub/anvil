@@ -1,11 +1,15 @@
 // SCORE: adoption -> score -> level (high-water) -> retroactive top-ups.
 // Weighed in star-equivalents (see config/economy.ts) - social is never
-// scored; sharing pays one-time quest bounties instead (economy/quests.ts).
+// scored on its own; quests (economy/quests.ts) add a small flat SCORE
+// bounty directly instead of paying sparks.
 import { and, eq, inArray, isNull, max, sql } from 'drizzle-orm';
-import { ECONOMY, levelFor } from '$lib/config/economy';
+import { ECONOMY, QUESTS, levelFor } from '$lib/config/economy';
 import { db, schema } from '../db';
 import { computeTopups, type ApprovedShipEarn } from './topup';
 
+const QUEST_SCORE = new Map(QUESTS.map((q) => [q.id, q.score]));
+
+/** Traction-only SCORE (stars/downloads/installs); excludes quest bounties. */
 export function scoreFor(sources: { kind: string; verified: boolean; lastValue: number | null }[]): number {
 	let score = 0;
 	for (const s of sources) {
@@ -15,6 +19,15 @@ export function scoreFor(sources: { kind: string; verified: boolean; lastValue: 
 	}
 
 	return Math.round(score * 100) / 100;
+}
+
+async function questScoreFor(projectId: number): Promise<number> {
+	const rows = await db()
+		.select({ questId: schema.projectQuests.questId })
+		.from(schema.projectQuests)
+		.where(eq(schema.projectQuests.projectId, projectId));
+
+	return rows.reduce((sum, r) => sum + (QUEST_SCORE.get(r.questId) ?? 0), 0);
 }
 
 /**
@@ -39,7 +52,7 @@ export async function recomputeScore(projectId: number): Promise<void> {
 		.from(schema.tractionSources)
 		.where(eq(schema.tractionSources.projectId, projectId));
 
-	const score = scoreFor(sources);
+	const score = scoreFor(sources) + (await questScoreFor(projectId));
 	const candidate = levelFor(score);
 	// review-gated levels only apply up to what staff have signed off
 	const applied = candidate.requiresReview ? Math.min(candidate.level, project.maxReviewedLevel) : candidate.level;

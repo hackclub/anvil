@@ -1,6 +1,6 @@
 // Housekeeping: verification refresh, trust refresh, budget audit, cleanup.
 import { and, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
-import { ECONOMY } from '$lib/config/economy';
+import { ECONOMY, SPARKS_PER_USD } from '$lib/config/economy';
 import { db, schema } from '../db';
 import { checkVerification } from '../auth/hca';
 import { getTrustLevel } from '../services/hackatime';
@@ -66,7 +66,7 @@ registerJob({
 			.from(schema.currencyLedger)
 			.where(inArray(schema.currencyLedger.kind, ['earn_ship', 'earn_topup']));
 
-		const earned = Number(row.earned);
+		const earned = Number(row.earned) / SPARKS_PER_USD;
 		const hours = Number(row.hours);
 		if (hours > 0) {
 			const avg = earned / hours;

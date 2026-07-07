@@ -51,7 +51,7 @@
 	export interface QuestInfo {
 		id: string;
 		title: string;
-		sparks: number;
+		score: number;
 		kind: 'repo-polish' | 'readme-mention' | 'share';
 		note: string | null;
 	}
@@ -1011,17 +1011,17 @@
 				blank();
 			}
 
-			// ── quests - one-time bounties for getting it out there ───────
+			// ── quests - one-time SCORE bounties for getting it out there ──
 			rule('quests', `${quests.completed.length}/${quests.catalog.length}`);
 			blank();
-			row(s('lil sparks for getting your project out there:', 'c1'));
+			row(s('lil SCORE bumps for getting your project out there:', 'c1'));
 			blank();
 			if (!quests.unlocked) {
 				row(s('quests unlock after your first approved ship!', 'c1'));
 			} else {
 				for (const q of quests.catalog) {
 					const done = quests.completed.includes(q.id);
-					const right = s(`+${q.sparks} ✶`, done ? 'c1' : 'c2');
+					const right = s(`+${q.score} score`, done ? 'c1' : 'c2');
 					if (done) {
 						row([...s('[x] ', 'c2'), ...s(q.title, 'c1')], right);
 						continue;
@@ -1360,7 +1360,7 @@
 		bind:open={questConfirmOpen}
 		closeOnYes={false}
 		error={questError}
-		title={`quest - +${questPending.sparks} ✶`}
+		title={`quest - +${questPending.score} score`}
 		face="[ ^w^ ]"
 		message={`${questPending.title}! ${questPending.note ?? ''}`}
 		input={questPending.kind === 'share' ? 'paste the link to your post here!' : undefined}

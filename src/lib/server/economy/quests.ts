@@ -1,12 +1,13 @@
-// Quests: one-time ✦1 bounties for getting a project out into the world.
-// Unlock after the first APPROVED ship (anti-farming); auto-granted on
-// completion. Idempotent via project_quests' unique (project_id, quest_id) -
-// the ledger row is written only after that insert succeeds.
+// Quests: one-time SCORE bounties for getting a project out into the world -
+// never sparks directly. Unlock after the first APPROVED ship (anti-farming);
+// auto-granted on completion. Idempotent via project_quests' unique
+// (project_id, quest_id) - recomputeScore only runs after that insert succeeds.
 import { and, eq } from 'drizzle-orm';
 import { QUESTS, type Quest } from '$lib/config/economy';
 import { db, schema } from '../db';
 import { audit } from '../audit';
 import { optional } from '../env';
+import { recomputeScore } from './score';
 
 export class QuestError extends Error {}
 
@@ -135,15 +136,11 @@ export async function completeQuest(
 			.returning({ id: schema.projectQuests.id });
 
 		if (inserted.length === 0) throw new QuestError('already completed - nice try :3');
-
-		await tx.insert(schema.currencyLedger).values({
-			userId: project.userId,
-			kind: 'earn_quest',
-			amount: quest.sparks,
-			projectId: project.id,
-			note: `quest: ${quest.title}`
-		});
 	});
+
+	// SCORE bump lands here, not sparks - may cross a level threshold and pay
+	// retroactive top-ups on prior approved ships, same as a traction change.
+	await recomputeScore(project.id);
 
 	audit({
 		actorType: 'user',
