@@ -31,8 +31,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				category: i.category,
 				price: i.price,
 				onePerUser: i.onePerUser,
-				stock: i.stock,
-				sortOrder: i.sortOrder
+				stock: i.stock
 			}))
 	};
 };

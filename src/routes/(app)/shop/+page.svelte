@@ -11,7 +11,7 @@
 	type Item = (typeof data.items)[number];
 
 	let category = $state<string>('all');
-	let sort = $state<'featured' | 'price-asc' | 'price-desc' | 'name'>('featured');
+	let sort = $state<'price-asc' | 'price-desc' | 'name'>('price-desc');
 
 	// confirm-before-order: the modal's yes submits the hidden form
 	let pending = $state<Item | null>(null);
@@ -30,7 +30,6 @@
 		const filtered = data.items.filter((i) => category === 'all' || (i.category ?? 'other') === category);
 
 		const by = {
-			featured: (a: Item, b: Item) => a.sortOrder - b.sortOrder,
 			'price-asc': (a: Item, b: Item) => a.price - b.price,
 			'price-desc': (a: Item, b: Item) => b.price - a.price,
 			name: (a: Item, b: Item) => a.name.localeCompare(b.name)
@@ -85,7 +84,6 @@
 		<label class="sortctl">
 			<span class="dim">sort:</span>
 			<select bind:value={sort}>
-				<option value="featured">featured</option>
 				<option value="price-asc">price ↑</option>
 				<option value="price-desc">price ↓</option>
 				<option value="name">name a→z</option>
