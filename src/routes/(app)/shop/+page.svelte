@@ -11,7 +11,7 @@
 	type Item = (typeof data.items)[number];
 
 	let category = $state<string>('all');
-	let sort = $state<'price-asc' | 'price-desc' | 'name'>('price-desc');
+	let sort = $state<'price-asc' | 'price-desc' | 'name'>('price-asc');
 
 	// confirm-before-order: the modal's yes submits the hidden form
 	let pending = $state<Item | null>(null);
