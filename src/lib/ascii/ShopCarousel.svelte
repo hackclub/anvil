@@ -8,6 +8,7 @@
 	// direction/phase/speed so two instances can overlap without syncing.
 	import { onMount } from 'svelte';
 	import { measureCharWidth } from './measureChar';
+	import { edgeColor } from '$lib/edgeFill';
 
 	interface Item {
 		name: string;
@@ -53,6 +54,10 @@
 	let charW = $state(9.6);
 	let offset = $state(0);
 	let seeded = $state(false);
+	// url -> sampled edge color, so opaque thumbnails backfill their image
+	// well; kept in state (not set via the edgeFill action) because the img's
+	// style attribute is rewritten every tick and would clobber a DOM mutation
+	let tints = $state<Record<string, string>>({});
 
 	// the endless strip: ROWS row-arrays of cells + per-card metadata
 	const built = $derived.by((): { rows: Cell[][]; cards: CardMeta[] } => {
@@ -188,7 +193,17 @@
 	onMount(() => {
 		fetch('/api/shop')
 			.then((r) => (r.ok ? r.json() : []))
-			.then((data: Item[]) => (items = data))
+			.then((data: Item[]) => {
+				items = data;
+				for (const it of data) {
+					if (!it.thumbnailUrl) continue;
+
+					const url = it.thumbnailUrl;
+					edgeColor(url).then((c) => {
+						if (c) tints[url] = c;
+					});
+				}
+			})
 			.catch(() => {});
 
 		function measure() {
@@ -228,6 +243,7 @@
 				src={img.url}
 				alt=""
 				loading="lazy"
+				style:background-color={tints[img.url]}
 				style={`left:${(img.px + 2) * charW}px;top:${IMG_TOP * cell * LH}px;width:${(CARD_W - 4) * charW}px;height:${IMG_ROWS * cell * LH}px`}
 			/>
 		{/each}
@@ -258,9 +274,11 @@
 		}
 	}
 
+	/* contain, not cover - show the whole item; edgeFill backfills the well
+	   with the image's own edge color when the image is opaque */
 	img {
 		position: absolute;
-		object-fit: cover;
+		object-fit: contain;
 		pointer-events: none;
 	}
 </style>

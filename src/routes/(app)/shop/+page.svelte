@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import TuiConfirm from '$lib/ascii/TuiConfirm.svelte';
 	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
+	import { edgeFill } from '$lib/edgeFill';
 	import { Pending, withPending } from '$lib/pending.svelte';
 
 	let { data, form } = $props();
@@ -96,7 +97,7 @@
 		{#each shown as item (item.id)}
 			<li class="card">
 				{#if item.thumbnailUrl}
-					<img src={item.thumbnailUrl} alt={item.name} loading="lazy" />
+					<img src={item.thumbnailUrl} alt={item.name} loading="lazy" use:edgeFill />
 				{:else}
 					<div class="noimg dim">·</div>
 				{/if}
@@ -246,11 +247,14 @@
 		}
 	}
 
+	/* contain, not cover - show the WHOLE item; edgeFill paints the img's
+	   background with the image's own edge color so opaque photos still
+	   fill the well (transparent ones sit on --bg-soft) */
 	.card img,
 	.noimg {
 		width: 100%;
 		aspect-ratio: 4 / 3;
-		object-fit: cover;
+		object-fit: contain;
 		border-bottom: 1px solid color-mix(in srgb, var(--dim) 40%, transparent);
 		background: var(--bg-soft);
 	}
