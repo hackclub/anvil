@@ -60,32 +60,34 @@ export const handle: Handle = sequence(Sentry.sentryHandle(), async ({ event, re
 		error(404, 'Not Found');
 	}
 
-	// Request lifecycle log - one line per request covers EVERY server route
-	// (pages, actions, endpoints) without per-file instrumentation. The health
-	// check is skipped so it doesn't drown the logs every few seconds.
+	// Only slow (>1s) requests get a log line - a per-request info log for EVERY
+	// route would drown stdout and blow through Sentry's log quota. The health
+	// check is excluded entirely. (5xx is surfaced by handleError, which has the
+	// actual error to attach.)
 	const start = performance.now();
 	const isHealth = event.url.pathname === '/healthz';
 	try {
 		const response = await resolve(event);
 		if (!isHealth) {
 			const ms = Math.round(performance.now() - start);
-			const data = {
-				method: event.request.method,
-				path: event.url.pathname,
-				status: response.status,
-				ms,
-				userId: event.locals.user?.id ?? null
-			};
-			// slow (>1s) requests get a nudge; the rest is routine info. (5xx is
-			// surfaced by handleError, which has the actual error to attach.)
-			if (ms > 1000) log.warn('slow request', data);
-			else log.info('request', data);
+			if (ms > 1000) {
+				log.warn('slow request', {
+					method: event.request.method,
+					path: event.url.pathname,
+					status: response.status,
+					ms,
+					userId: event.locals.user?.id ?? null
+				});
+			}
 		}
 
 		return response;
 	} catch (err) {
-		// A throw here becomes a 500 via handleError; log the routing context too.
+		// A throw here becomes a 500 that handleError captures to Sentry; this is
+		// just the stdout breadcrumb with routing context - capture:false so we
+		// don't open a duplicate Issue.
 		log.exception('request threw', err, {
+			capture: false,
 			method: event.request.method,
 			path: event.url.pathname,
 			userId: event.locals.user?.id ?? null

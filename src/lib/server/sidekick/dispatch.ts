@@ -42,7 +42,9 @@ export async function dispatch(action: string, input: Json): Promise<Json> {
 		if (err instanceof SidekickError) {
 			log.warn('action rejected', { action, code: err.code, ms: Math.round(performance.now() - start) });
 		} else {
-			log.exception('action threw', err, { action, ms: Math.round(performance.now() - start) });
+			// capture:false - the endpoint's catch captures this to Sentry with the
+			// HTTP context; this is just the inner breadcrumb, so don't dupe the Issue.
+			log.exception('action threw', err, { capture: false, action, ms: Math.round(performance.now() - start) });
 		}
 
 		throw err;
