@@ -21,5 +21,5 @@ export const GET: RequestHandler = ({ cookies, url, locals }) => {
 		cookies.set('hca_oauth_next', next, { path: '/', httpOnly: true, secure: true, maxAge: 600 });
 	}
 
-	redirect(302, authorizationUrl(state).toString());
+	redirect(302, authorizationUrl(state, url.origin).toString());
 };

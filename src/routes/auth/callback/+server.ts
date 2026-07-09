@@ -15,7 +15,7 @@ export const GET: RequestHandler = async ({ cookies, url, request, getClientAddr
 		error(400, 'invalid oauth state - please try signing in again');
 	}
 
-	const tokens = await exchangeCode(code);
+	const tokens = await exchangeCode(code, url.origin);
 	const me = await fetchMe(tokens.accessToken);
 	const user = await upsertUserFromLogin(me, tokens);
 

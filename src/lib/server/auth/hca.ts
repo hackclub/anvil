@@ -31,22 +31,38 @@ function issuer(): string {
 	return optional('HCA_ISSUER', 'https://auth.hackclub.com');
 }
 
-function client(): OAuth2Client {
+/** Base URL for the OAuth callback. Dev servers hop ports (vite picks 5174
+ *  when 5173 is taken, the verify recipe runs on 5199), so a localhost
+ *  request follows the origin the user is actually on instead of stranding
+ *  them on whatever port PUBLIC_BASE_URL was frozen at. Only localhost
+ *  origins are honored - a non-localhost deploy stays pinned to
+ *  PUBLIC_BASE_URL no matter what the Host header claims. */
+function callbackBase(requestOrigin?: string): string {
+	if (requestOrigin && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(requestOrigin)) {
+		return requestOrigin;
+	}
+
+	return required('PUBLIC_BASE_URL');
+}
+
+function client(requestOrigin?: string): OAuth2Client {
 	return new OAuth2Client(
 		required('HCA_CLIENT_ID'),
 		required('HCA_CLIENT_SECRET'),
-		`${required('PUBLIC_BASE_URL')}/auth/callback`
+		`${callbackBase(requestOrigin)}/auth/callback`
 	);
 }
 
 export { generateState };
 
-export function authorizationUrl(state: string): URL {
-	return client().createAuthorizationURL(`${issuer()}/oauth/authorize`, state, HCA_SCOPES);
+export function authorizationUrl(state: string, requestOrigin?: string): URL {
+	return client(requestOrigin).createAuthorizationURL(`${issuer()}/oauth/authorize`, state, HCA_SCOPES);
 }
 
-export async function exchangeCode(code: string) {
-	const tokens = await client().validateAuthorizationCode(`${issuer()}/oauth/token`, code, null);
+export async function exchangeCode(code: string, requestOrigin?: string) {
+	// the exchange's redirect_uri must byte-match the authorize one; HCA sent
+	// the browser back to that exact URL, so the callback's origin is it
+	const tokens = await client(requestOrigin).validateAuthorizationCode(`${issuer()}/oauth/token`, code, null);
 	return {
 		accessToken: tokens.accessToken(),
 		refreshToken: tokens.hasRefreshToken() ? tokens.refreshToken() : null,
