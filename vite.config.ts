@@ -17,7 +17,14 @@ export default defineConfig({
 
 			// Node server: the marketing homepage stays prerendered (see
 			// (marketing)/+layout.ts); the platform routes are SSR'd.
-			adapter: adapter()
+			adapter: adapter(),
+
+			// Enable src/instrumentation.server.ts (Sentry init runs here).
+			experimental: {
+				instrumentation: {
+					server: true
+				}
+			}
 		})
 	]
 });
