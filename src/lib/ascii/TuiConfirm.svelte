@@ -326,6 +326,15 @@
 		overflow-x: auto;
 	}
 
+	/* the drawn window is a fixed 52-col grid (31.2em in this mono face) -
+	   below ~552px scale the font with the viewport so the whole dialog,
+	   buttons included, stays on screen (everything inside is ch/em) */
+	@media (max-width: 552px) {
+		.modal {
+			font-size: 2.9vw;
+		}
+	}
+
 	pre {
 		margin: 0;
 		font-family: var(--font-mono);

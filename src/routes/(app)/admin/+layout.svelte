@@ -62,4 +62,12 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* phones: eight tabs don't fit on one line */
+	@media (max-width: 640px) {
+		nav {
+			flex-wrap: wrap;
+			row-gap: 0.3rem;
+		}
+	}
 </style>

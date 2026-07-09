@@ -125,4 +125,12 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* phones: the wide tables scroll instead of blowing out the page */
+	@media (max-width: 700px) {
+		table {
+			display: block;
+			overflow-x: auto;
+		}
+	}
 </style>

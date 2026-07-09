@@ -218,4 +218,12 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* the widest drawn button is ~33 cols (19.8em) - on very narrow phones
+	   scale the font so the box-drawing buttons don't overflow */
+	@media (max-width: 420px) {
+		.onboarding {
+			font-size: min(var(--fs-md), calc((100vw - var(--gutter) * 2) / 21));
+		}
+	}
 </style>

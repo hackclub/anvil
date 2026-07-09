@@ -309,4 +309,22 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* phones: the funnel table scrolls, and the 34ch label column of the
+	   dl grids won't fit next to values - stack them */
+	@media (max-width: 640px) {
+		table {
+			display: block;
+			overflow-x: auto;
+		}
+
+		dl {
+			grid-template-columns: 1fr;
+			gap: 0.15rem;
+		}
+
+		dd {
+			margin-bottom: 0.5rem;
+		}
+	}
 </style>

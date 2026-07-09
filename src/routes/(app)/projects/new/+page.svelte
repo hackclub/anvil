@@ -154,4 +154,13 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* the drawn prompt box is a fixed 48 cols (28.8em in this mono face) -
+	   on phones scale the font to the viewport so it fits; the overlaid
+	   input is positioned in ch/em, so it scales along */
+	@media (max-width: 560px) {
+		.newproj {
+			font-size: min(var(--fs-md), calc((100vw - var(--gutter) * 2) / 30));
+		}
+	}
 </style>

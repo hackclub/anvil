@@ -188,4 +188,17 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* phones: the title takes its own line so status/lock/level stop
+	   squeezing long project names */
+	@media (max-width: 640px) {
+		.projects a {
+			flex-wrap: wrap;
+			row-gap: 0.15rem;
+		}
+
+		.title {
+			flex-basis: 100%;
+		}
+	}
 </style>

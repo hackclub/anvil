@@ -128,9 +128,13 @@
 	let pre: HTMLPreElement | undefined = $state();
 	let cols = $state(80);
 	let charW = $state(9.6);
+	// effective cell size: `cell` on desktop; measure() sets a shrunken size
+	// on hosts too narrow for the 52-col minimum (null = full size)
+	let narrowFs = $state<number | null>(null);
+	const fs = $derived(narrowFs ?? cell);
 	// airier grid: rows are 1.25 cells tall (box-drawing verticals get small
 	// gaps, which reads as a subtle dotted frame - intentional)
-	const rowH = $derived(Math.round(cell * 1.25));
+	const rowH = $derived(Math.round(fs * 1.25));
 	let hovered = $state<string | null>(null);
 	let scroll = $state(0); // unlinked-keys list scroll offset
 	let filter = $state(''); // "/" search over unlinked keys
@@ -1199,8 +1203,14 @@
 		function measure() {
 			if (!host) return;
 
-			charW = measureCharWidth(cell, host);
-			cols = Math.max(52, Math.floor(host.getBoundingClientRect().width / charW));
+			const w = host.getBoundingClientRect().width;
+			// phones can't fit the 52-col minimum at the full cell size - shrink
+			// the whole grid (hotspots are px-positioned off charW/rowH, so a
+			// CSS-only font change would desync them)
+			const full = measureCharWidth(cell, host);
+			narrowFs = w >= 52 * full ? null : Math.max(9, Math.floor(w / 52 / (full / cell)));
+			charW = measureCharWidth(fs, host);
+			cols = Math.max(52, Math.floor(w / charW));
 		}
 
 		measure();
@@ -1210,7 +1220,7 @@
 	});
 </script>
 
-<div class="tui" bind:this={host} style="--fs: {cell}px; --lh: {rowH}px" onwheel={onWheel}>
+<div class="tui" bind:this={host} style="--fs: {fs}px; --lh: {rowH}px" onwheel={onWheel}>
 	<pre bind:this={pre} aria-hidden="true"></pre>
 
 	{#each built.hotspots as h (h.id)}
@@ -1382,6 +1392,8 @@
 	.tui {
 		position: relative;
 		font-size: var(--fs);
+		/* below the 9px cell floor the grid can't shrink further - scroll */
+		overflow-x: auto;
 	}
 
 	pre {

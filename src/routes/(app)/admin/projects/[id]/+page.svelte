@@ -342,4 +342,15 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* phones: the 44ch key input can't keep its fixed width */
+	@media (max-width: 560px) {
+		.addkey {
+			flex-wrap: wrap;
+
+			input {
+				width: 100%;
+			}
+		}
+	}
 </style>

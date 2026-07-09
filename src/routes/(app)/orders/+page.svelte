@@ -314,4 +314,16 @@
 	.dim {
 		color: var(--dim);
 	}
+
+	/* phones: thumb + name on the first line, price/status/date wrap below */
+	@media (max-width: 640px) {
+		.row {
+			flex-wrap: wrap;
+			row-gap: 0.2rem;
+		}
+
+		.name {
+			flex-basis: calc(100% - 2.6rem - 1.5ch);
+		}
+	}
 </style>

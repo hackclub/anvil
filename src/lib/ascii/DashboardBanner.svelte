@@ -67,20 +67,63 @@
 
 		function buildLines(): TextLine[] {
 			const mid = (rows - 1) >> 1;
-			const x0 = 6;
+			// tighter left indent on narrow screens so the welcome/motd copy isn't
+			// squeezed into a sliver (and roughly aligns with the gutter below)
+			const x0 = cols < 56 ? 2 : 6;
 			const toCells = (segs: MotdSegment[]) =>
 				segs.flatMap((s) => [...s.text].map((ch) => ({ ch, cls: s.accent ? 'c2' : 'c3' })));
 
-			const lines: TextLine[] = [
-				{
-					y: mid - 1,
-					x0,
-					cells: toCells([{ text: 'welcome, ' }, { text: `@${username}`, accent: true }, { text: '!' }])
+			// word-wrap onto the grid so narrow screens don't clip the text
+			// mid-line; on desktop everything fits and nothing changes.
+			// cols overshoots the visible width by ~1 (the +1 in measure()), so
+			// -3 keeps the last glyph clear of the clipped edge
+			const maxW = Math.max(12, cols - x0 - 3);
+			const wrapCells = (cells: { ch: string; cls: string }[]) => {
+				const words: (typeof cells)[] = [];
+				let word: typeof cells = [];
+				for (const c of cells) {
+					if (c.ch !== ' ') {
+						word.push(c);
+					} else if (word.length) {
+						words.push(word);
+						word = [];
+					}
 				}
-			];
 
+				if (word.length) {
+					words.push(word);
+				}
+
+				const out: (typeof cells)[] = [[]];
+				for (const w of words) {
+					const line = out[out.length - 1];
+					if (line.length && line.length + 1 + w.length > maxW) {
+						out.push([...w]);
+					} else {
+						if (line.length) {
+							line.push({ ch: ' ', cls: '' });
+						}
+
+						line.push(...w);
+					}
+				}
+
+				return out;
+			};
+
+			const lines: TextLine[] = [];
+			let y = mid - 1;
+			for (const cells of wrapCells(
+				toCells([{ text: 'welcome, ' }, { text: `@${username}`, accent: true }, { text: '!' }])
+			)) {
+				lines.push({ y: y++, x0, cells });
+			}
+
+			y++; // the blank row between the welcome line and the motd
 			if (motd.length > 0) {
-				lines.push({ y: mid + 1, x0, cells: toCells(motd) });
+				for (const cells of wrapCells(toCells(motd))) {
+					lines.push({ y: y++, x0, cells });
+				}
 			}
 
 			// ── the three-step pitch, cascading down-right as ascii panes ──

@@ -70,8 +70,12 @@
 	let confirmOpen = $state(false);
 	let cols = $state(80);
 	let charW = $state(9.6);
+	// effective cell size: `cell` on desktop; measure() sets a shrunken size
+	// on hosts too narrow for the 52-col minimum (null = full size)
+	let narrowFs = $state<number | null>(null);
+	const fs = $derived(narrowFs ?? cell);
 	// same airy grid as the project page: rows are 1.25 cells tall
-	const rowH = $derived(Math.round(cell * 1.25));
+	const rowH = $derived(Math.round(fs * 1.25));
 	let hovered = $state<string | null>(null);
 	let focusedField = $state<string | null>(null);
 	// slow-network feedback: labels swap only after 100ms in flight
@@ -552,8 +556,14 @@
 		function measure() {
 			if (!host) return;
 
-			charW = measureCharWidth(cell, host);
-			cols = Math.max(52, Math.floor(host.getBoundingClientRect().width / charW));
+			const w = host.getBoundingClientRect().width;
+			// phones can't fit the 52-col minimum at the full cell size - shrink
+			// the whole grid (hotspots are px-positioned off charW/rowH, so a
+			// CSS-only font change would desync them)
+			const full = measureCharWidth(cell, host);
+			narrowFs = w >= 52 * full ? null : Math.max(9, Math.floor(w / 52 / (full / cell)));
+			charW = measureCharWidth(fs, host);
+			cols = Math.max(52, Math.floor(w / charW));
 		}
 
 		measure();
@@ -571,7 +581,7 @@
 		`left:${4 * charW}px;top:${slot.row * rowH}px;width:${(Math.max(52, cols) - 4 - 6) * charW}px;height:${slot.rows * rowH}px`;
 </script>
 
-<div class="tui" bind:this={host} style="--fs: {cell}px; --lh: {rowH}px" onwheel={onWheel}>
+<div class="tui" bind:this={host} style="--fs: {fs}px; --lh: {rowH}px" onwheel={onWheel}>
 	<pre bind:this={pre} aria-hidden="true"></pre>
 
 	<!-- the update form itself is empty except the hidden file input; all
@@ -729,6 +739,8 @@
 	.tui {
 		position: relative;
 		font-size: var(--fs);
+		/* below the 9px cell floor the grid can't shrink further - scroll */
+		overflow-x: auto;
 	}
 
 	pre {
