@@ -4,7 +4,10 @@ import { redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { checkVerification } from '$lib/server/auth/hca';
 import { db, schema } from '$lib/server/db';
+import { createLogger } from '$lib/log';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('auth');
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const user = locals.user;
@@ -19,6 +22,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 					verificationRefreshedAt: new Date()
 				})
 				.where(eq(schema.users.id, user.id));
+			log.info('verification refreshed', {
+				userId: user.id,
+				status: result.status,
+				eligible: result.eligible
+			});
 		}
 	}
 

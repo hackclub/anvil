@@ -6,8 +6,10 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { createLogger } from '$lib/log';
 import { optional } from '../env';
 
+const log = createLogger('storage');
 const LOCAL_ROOT = '.data/uploads';
 
 function s3(): Bun.S3Client | null {
@@ -65,6 +67,7 @@ export async function storeUpload(file: File, prefix: string): Promise<{ key: st
 		await writeFile(path, Buffer.from(await file.arrayBuffer()));
 	}
 
+	log.info('upload stored', { key, backend: client ? 's3' : 'local', bytes: file.size, contentType });
 	return { key };
 }
 
@@ -75,6 +78,8 @@ export async function deleteUpload(key: string): Promise<void> {
 	} else {
 		await rm(localPath(key), { force: true });
 	}
+
+	log.info('upload deleted', { key, backend: client ? 's3' : 'local' });
 }
 
 /** Public URL for a stored key (absolute for S3/R2, app-relative for local). */

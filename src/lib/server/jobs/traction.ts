@@ -2,10 +2,13 @@
 // then recompute SCORE (which pays retroactive top-ups on level rises).
 import { eq, inArray, sql } from 'drizzle-orm';
 import { ECONOMY } from '$lib/config/economy';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { recomputeScore } from '../economy/score';
 import { FETCHERS } from '../services/traction/fetchers';
 import { registerJob } from './index';
+
+const log = createLogger('jobs.traction');
 
 // Keep third-party APIs (GitHub especially, which is 60 req/hr unauthenticated)
 // happy: space requests out, and back a failing source off exponentially
@@ -22,6 +25,9 @@ async function pollSources(kinds: string[]): Promise<void> {
 		.where(inArray(schema.tractionSources.kind, kinds as never));
 
 	const touchedProjects = new Set<number>();
+	let polled = 0;
+	let failed = 0;
+	log.info('poll starting', { kinds: kinds.join(','), sources: sources.length });
 
 	let first = true;
 	for (const source of sources) {
@@ -59,9 +65,13 @@ async function pollSources(kinds: string[]): Promise<void> {
 						.set({ scoreFlagged: true })
 						.where(eq(schema.projects.id, source.projectId));
 
-					console.warn(
-						`[traction] velocity flag: project ${source.projectId} ${source.kind}:${source.externalRef} ${prev} -> ${result.value} in ${hoursSince.toFixed(1)}h`
-					);
+					log.warn('velocity flag raised', {
+						projectId: source.projectId,
+						source: `${source.kind}:${source.externalRef}`,
+						from: prev,
+						to: result.value,
+						hours: Number(hoursSince.toFixed(1))
+					});
 				}
 			}
 
@@ -71,6 +81,7 @@ async function pollSources(kinds: string[]): Promise<void> {
 				.where(eq(schema.tractionSources.id, source.id));
 
 			touchedProjects.add(source.projectId);
+			polled++;
 		} catch (err) {
 			await db()
 				.update(schema.tractionSources)
@@ -80,13 +91,23 @@ async function pollSources(kinds: string[]): Promise<void> {
 				})
 				.where(eq(schema.tractionSources.id, source.id));
 
-			console.warn(`[traction] poll failed ${source.kind}:${source.externalRef}:`, err);
+			failed++;
+			// capture:false - a flaky third-party API isn't a code bug; the count
+			// is what matters. errorCount+backoff already handles chronic failures.
+			log.warn('poll failed', {
+				err,
+				capture: false,
+				source: `${source.kind}:${source.externalRef}`,
+				errorCount: source.errorCount + 1
+			});
 		}
 	}
 
 	for (const projectId of touchedProjects) {
 		await recomputeScore(projectId);
 	}
+
+	log.info('poll complete', { polled, failed, projectsRescored: touchedProjects.size });
 }
 
 registerJob({

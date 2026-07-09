@@ -7,9 +7,12 @@
 // Also backfills the slack username - the platform's primary display name.
 // Called best-effort on login and on demand from the project page.
 import { eq } from 'drizzle-orm';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import type { User } from '../db/schema';
 import { getStatsProfile, lookupByEmail, lookupBySlackUid } from './hackatime';
+
+const log = createLogger('hackatime.link');
 
 export async function ensureHackatimeLinked(user: User): Promise<string | null> {
 	if (user.hackatimeId && user.username) return user.hackatimeId;
@@ -42,7 +45,10 @@ export async function ensureHackatimeLinked(user: User): Promise<string | null> 
 		}
 	}
 
-	if (!profile) return user.hackatimeId ?? null;
+	if (!profile) {
+		log.info('no hackatime account found', { userId: user.id, hadId: !!user.hackatimeId });
+		return user.hackatimeId ?? null;
+	}
 
 	await db()
 		.update(schema.users)
@@ -52,5 +58,10 @@ export async function ensureHackatimeLinked(user: User): Promise<string | null> 
 		})
 		.where(eq(schema.users.id, user.id));
 
+	log.info('linked', {
+		userId: user.id,
+		hackatimeId: profile.id,
+		backfilledUsername: !!(profile.username && !user.username)
+	});
 	return profile.id;
 }

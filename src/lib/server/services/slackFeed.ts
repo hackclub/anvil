@@ -3,9 +3,12 @@
 // Fire-and-forget like the audit trail - a Slack hiccup must never break
 // the action being reported. No webhook configured = silently off (dev).
 import { and, eq, isNotNull } from 'drizzle-orm';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { optional } from '../env';
 import { escapeSlack } from './slackText';
+
+const log = createLogger('slack.feed');
 
 export function feed(text: string): void {
 	const url = optional('SLACK_FEED_WEBHOOK');
@@ -18,10 +21,10 @@ export function feed(text: string): void {
 	}).then(
 		(res) => {
 			if (!res.ok) {
-				console.warn('[slack-feed] post failed:', res.status);
+				log.warn('post failed', { status: res.status });
 			}
 		},
-		(err) => console.warn('[slack-feed] post failed:', err)
+		(err) => log.warn('post failed', { err, capture: false })
 	);
 }
 

@@ -5,7 +5,10 @@ import { timingSafeEqual } from 'node:crypto';
 import { dispatch } from '$lib/server/sidekick/dispatch';
 import { SidekickError } from '$lib/server/sidekick/reviewActions';
 import { optional } from '$lib/server/env';
+import { createLogger } from '$lib/log';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('sidekick.http');
 
 function authorized(header: string | null): boolean {
 	const secret = optional('SIDEKICK_SECRET');
@@ -19,6 +22,7 @@ function authorized(header: string | null): boolean {
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!authorized(request.headers.get('authorization'))) {
+		log.warn('unauthorized request rejected', { ip: getClientAddress() });
 		return json({ error: 'UNAUTHORIZED', message: 'Invalid secret.' }, { status: 401 });
 	}
 
@@ -46,7 +50,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 			return json({ error: err.code, message: err.message }, { status });
 		}
 
-		console.error('[sidekick] internal error:', err);
+		log.exception('internal error', err, { action: body.action });
 		return json({ error: 'INTERNAL_ERROR', message: 'Something broke on our side.' }, { status: 500 });
 	}
 };

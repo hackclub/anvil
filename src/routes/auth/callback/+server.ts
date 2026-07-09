@@ -3,7 +3,10 @@ import { exchangeCode, fetchMe, upsertUserFromLogin } from '$lib/server/auth/hca
 import { createSession } from '$lib/server/auth/session';
 import { safeNext } from '$lib/server/auth/redirect';
 import { ensureHackatimeLinked } from '$lib/server/services/hackatimeLink';
+import { createLogger } from '$lib/log';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('auth');
 
 export const GET: RequestHandler = async ({ cookies, url, request, getClientAddress }) => {
 	const code = url.searchParams.get('code');
@@ -12,6 +15,11 @@ export const GET: RequestHandler = async ({ cookies, url, request, getClientAddr
 	cookies.delete('hca_oauth_state', { path: '/' });
 
 	if (!code || !state || !storedState || state !== storedState) {
+		log.warn('oauth callback rejected: state mismatch', {
+			hasCode: !!code,
+			hasState: !!state,
+			hasStoredState: !!storedState
+		});
 		error(400, 'invalid oauth state - please try signing in again');
 	}
 
@@ -19,14 +27,23 @@ export const GET: RequestHandler = async ({ cookies, url, request, getClientAddr
 	const me = await fetchMe(tokens.accessToken);
 	const user = await upsertUserFromLogin(me, tokens);
 
-	if (user.isBanned) error(403, 'this account is banned from Anvil');
+	if (user.isBanned) {
+		log.warn('banned account blocked at login', { userId: user.id });
+		error(403, 'this account is banned from Anvil');
+	}
 
 	// auto-link Hackatime from the slack id / email HCA just gave us
 	try {
 		await ensureHackatimeLinked(user);
 	} catch (err) {
-		console.warn('[auth] hackatime auto-link failed (retryable from the project page):', err);
+		log.warn('hackatime auto-link failed (retryable from the project page)', {
+			err,
+			capture: false,
+			userId: user.id
+		});
 	}
+
+	log.info('login', { userId: user.id, username: user.username });
 
 	await createSession(
 		user.id,

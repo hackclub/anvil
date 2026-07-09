@@ -3,8 +3,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import type { User } from '../db/schema';
+
+const log = createLogger('auth.session');
 
 export const SESSION_COOKIE = 'anvil_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // sliding 30 days
@@ -37,6 +40,8 @@ export async function createSession(
 		sameSite: 'lax',
 		maxAge: SESSION_TTL_MS / 1000
 	});
+
+	log.info('session created', { userId, ip: meta.ip ?? null });
 }
 
 export async function resolveSession(token: string): Promise<{ user: User; sessionId: string } | null> {
@@ -53,11 +58,19 @@ export async function resolveSession(token: string): Promise<{ user: User; sessi
 	const session = row.sessions;
 	const user = row.users;
 	if (session.expiresAt.getTime() < Date.now()) {
+		log.debug('session expired', { userId: user.id, sessionId: session.id });
 		await db().delete(schema.sessions).where(eq(schema.sessions.id, session.id));
 		return null;
 	}
 
-	if (user.deletedAt || user.isBanned) return null;
+	if (user.deletedAt || user.isBanned) {
+		log.warn('session rejected for inactive user', {
+			userId: user.id,
+			banned: user.isBanned,
+			deleted: !!user.deletedAt
+		});
+		return null;
+	}
 
 	// sliding expiry, extended at most once a day to avoid a write per request
 	const remaining = session.expiresAt.getTime() - Date.now();
@@ -77,4 +90,5 @@ export async function destroySession(token: string, cookies: Cookies): Promise<v
 		.where(eq(schema.sessions.tokenHash, hashToken(token)));
 
 	cookies.delete(SESSION_COOKIE, { path: '/' });
+	log.info('session destroyed');
 }

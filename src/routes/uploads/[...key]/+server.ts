@@ -2,7 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { error } from '@sveltejs/kit';
 import { localPath } from '$lib/server/services/storage';
+import { createLogger } from '$lib/log';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('uploads');
 
 // Only raster image types we serve inline. SVG is deliberately excluded: it
 // can carry <script> and would execute in our own origin, so it's never
@@ -21,6 +24,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	try {
 		body = await readFile(localPath(params.key));
 	} catch {
+		log.debug('upload not found', { key: params.key });
 		error(404);
 	}
 

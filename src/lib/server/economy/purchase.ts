@@ -1,10 +1,13 @@
 // Purchasing: balance check + spend + order creation under a per-user
 // advisory lock, so concurrent purchases can't double-spend sparks.
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { fetchLiveProfile } from '../auth/hca';
 import { audit } from '../audit';
 import type { User } from '../db/schema';
+
+const log = createLogger('economy.purchase');
 
 export class PurchaseError extends Error {}
 
@@ -102,6 +105,15 @@ export async function purchase(
 			entityType: 'order',
 			entityId: order.id,
 			data: { itemId: item.id, itemName: item.name, quantity, total }
+		});
+
+		log.info('purchase', {
+			userId: user.id,
+			orderId: order.id,
+			itemId: item.id,
+			itemName: item.name,
+			quantity,
+			total
 		});
 
 		return { orderId: order.id };

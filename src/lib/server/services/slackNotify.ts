@@ -3,8 +3,11 @@
 // SLACK_BOT_TOKEN unset = silently off (dev). Fire-and-forget like feed()
 // and audit(): a Slack hiccup must never break the action being reported.
 // SLACK_API_BASE exists so dev can point DMs at a local catcher.
+import { createLogger } from '$lib/log';
 import { optional } from '../env';
 import { escapeSlack } from './slackText';
+
+const log = createLogger('slack.dm');
 
 interface Recipient {
 	slackId: string | null;
@@ -34,10 +37,10 @@ export function inviteToSignupChannels(user: Recipient): void {
 				const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
 				// already_in_channel just means someone invited them already - not a failure
 				if (!res.ok || (!body?.ok && body?.error !== 'already_in_channel')) {
-					console.warn('[slack-invite] invite failed:', channel, body?.error ?? res.status);
+					log.warn('invite failed', { channel, reason: body?.error ?? res.status });
 				}
 			},
-			(err) => console.warn('[slack-invite] invite failed:', channel, err)
+			(err) => log.warn('invite failed', { err, capture: false, channel })
 		);
 	}
 }
@@ -58,10 +61,10 @@ export function dm(user: Recipient, text: string): void {
 		async (res) => {
 			const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
 			if (!res.ok || !body?.ok) {
-				console.warn('[slack-dm] send failed:', body?.error ?? res.status);
+				log.warn('send failed', { reason: body?.error ?? res.status });
 			}
 		},
-		(err) => console.warn('[slack-dm] send failed:', err)
+		(err) => log.warn('send failed', { err, capture: false })
 	);
 }
 

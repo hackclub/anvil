@@ -1,5 +1,19 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { createLogger } from '$lib/log';
+
+	const log = createLogger('error-page');
+
+	// Records that the user actually landed on an error screen (the thrown error
+	// itself is already reported via handleError). Runs on the client only.
+	onMount(() => {
+		log.warn('error page shown', {
+			status: page.status,
+			message: page.error?.message,
+			path: page.url.pathname
+		});
+	});
 
 	const DIGITS: Record<string, string[]> = {
 		'0': ['█▀▀▀█', '█   █', '█   █', '█   █', '█▄▄▄█'],

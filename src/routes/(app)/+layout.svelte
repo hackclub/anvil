@@ -1,8 +1,15 @@
 <script lang="ts">
+	import * as Sentry from '@sentry/sveltekit';
 	import { navigating, page } from '$app/state';
 	import TuiSpinner from '$lib/ascii/TuiSpinner.svelte';
 
 	let { data, children } = $props();
+
+	// Attach the signed-in user to every client-side log/error/breadcrumb, so
+	// browser reports carry the same identity as the server side.
+	$effect(() => {
+		Sentry.setUser({ id: String(data.user.id), username: data.user.username });
+	});
 
 	// Delayed navigation indicator: only show loading UI when a page load has
 	// been pending for more than 100ms, so fast navigations stay silent.
