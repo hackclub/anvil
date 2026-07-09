@@ -27,3 +27,6 @@ vite.config.ts.timestamp-*
 
 # Claude Code project config/skills - local only
 .claude
+
+# Sentry Config File
+.env.sentry-build-plugin

@@ -34,6 +34,7 @@
 		"vite": "^8.0.16"
 	},
 	"dependencies": {
+		"@sentry/sveltekit": "^10",
 		"@sveltejs/adapter-node": "^5.5.7",
 		"arctic": "^3.7.0",
 		"chart.js": "^4.5.1",

@@ -1,3 +1,5 @@
+import { sequence } from '@sveltejs/kit/hooks';
+import * as Sentry from '@sentry/sveltekit';
 import { error, type Handle, type ServerInit } from '@sveltejs/kit';
 import { building } from '$app/environment';
 import { resolveSession, SESSION_COOKIE } from '$lib/server/auth/session';
@@ -17,7 +19,7 @@ export const init: ServerInit = async () => {
 	}
 };
 
-export const handle: Handle = async ({ event, resolve }) => {
+export const handle: Handle = sequence(Sentry.sentryHandle(), async ({ event, resolve }) => {
 	event.locals.user = null;
 	event.locals.sessionId = null;
 
@@ -42,4 +44,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	return resolve(event);
-};
+});
+export const handleError = Sentry.handleErrorWithSentry();
