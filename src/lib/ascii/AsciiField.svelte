@@ -372,6 +372,22 @@
 
 			const CAVE_EDGE = 4;
 
+			// [data-no-smoke] sections mask out cursor smoke entirely: cells inside
+			// these rects render no particle deposit, so smoke spawned above (e.g. in
+			// the hero) can't drift down and bleed through the "how it works" section
+			const noSmokeRects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+			document.querySelectorAll('[data-no-smoke]').forEach((el) => {
+				const r = el.getBoundingClientRect();
+				if (r.bottom > 0 && r.top < window.innerHeight && r.width > 0) {
+					noSmokeRects.push({
+						x0: Math.floor(r.left / charW),
+						y0: Math.floor(r.top / charH),
+						x1: Math.ceil(r.right / charW),
+						y1: Math.ceil(r.bottom / charH)
+					});
+				}
+			});
+
 			// separating curves: bands of rows where a divider draws over everything
 			const bands: { y0: number; brows: number; label: string }[] = [];
 			document.querySelectorAll('[data-divider]').forEach((el) => {
@@ -509,6 +525,17 @@
 
 						amb *= caveF;
 						smoke = smokeF;
+					}
+
+					// kill smoke deposit inside no-smoke sections so it can't bleed through
+					if (smoke && noSmokeRects.length) {
+						for (let n = 0; n < noSmokeRects.length; n++) {
+							const nr = noSmokeRects[n];
+							if (x >= nr.x0 && x < nr.x1 && y >= nr.y0 && y < nr.y1) {
+								smoke = 0;
+								break;
+							}
+						}
 					}
 
 					let v = amb + density[rowBase + x] * smoke;

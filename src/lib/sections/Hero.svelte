@@ -21,8 +21,7 @@
 		</h1>
 		<p class="sub">
 			build anything that helps other hackers make cool stuff. the more it gets
-			<span class="accent">used</span>
-			, the better your reward gets.
+			<span class="accent">used</span>, the better your reward gets.
 		</p>
 		<div class="cta">
 			<TerminalButton label="> enter platform" variant="primary" href="/auth/login" />

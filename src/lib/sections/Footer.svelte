@@ -43,8 +43,7 @@
 			Hack Club is a 501(c)(3) nonprofit and network of 60k+ technical high schoolers. We believe you learn best by
 			building, so we're creating community and providing grants so you can make awesome projects. At Hack Club,
 			students aren't just learning - they're
-			<span class="accent">shipping</span>
-			.
+			<span class="accent shipping">shipping</span>.
 		</p>
 
 		<div class="cols">
@@ -99,11 +98,16 @@
 
 	.blurb {
 		font-size: var(--fs-sm);
-		color: var(--text);
-		opacity: 0.75;
+		/* dim the body copy via a translucent text color rather than opacity, so
+		   the accent word can stay fully opaque and match the "Hack Club" link */
+		color: color-mix(in srgb, var(--text) 75%, transparent);
 		line-height: 1.7;
 		max-width: 62ch;
 		margin-bottom: 2.5rem;
+	}
+
+	.blurb .shipping {
+		color: var(--accent);
 	}
 
 	.cols {

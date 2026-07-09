@@ -114,4 +114,33 @@
 			opacity: 0;
 		}
 	}
+
+	/* narrow screens: the fixed-width monospace transcript no longer fits, so let
+	   the copy wrap and full-bleed the wrap to the viewport edges. the rift is
+	   carved around [data-panel-mask], so widening it makes the rift extend
+	   across the full width - the same full-bleed vein as "what you can get". */
+	@media (max-width: 34rem) {
+		.wrap {
+			width: 100%;
+			max-width: none;
+			justify-self: stretch;
+			padding-inline: var(--gutter);
+		}
+
+		/* normal (not pre-wrap) so the literal leading spaces collapse away -
+		   the "output" indentation reads as clutter once the lines wrap */
+		.line {
+			white-space: normal;
+		}
+
+		/* flow consecutive output lines together as one wrapping paragraph,
+		   disregarding the authored line breaks between them */
+		.line.out {
+			display: inline;
+		}
+
+		.line.out::after {
+			content: ' ';
+		}
+	}
 </style>
