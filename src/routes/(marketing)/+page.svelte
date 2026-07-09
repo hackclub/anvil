@@ -5,7 +5,6 @@
 	import Faq from '$lib/sections/Faq.svelte';
 	import SignUp from '$lib/sections/SignUp.svelte';
 	import Footer from '$lib/sections/Footer.svelte';
-	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import AsciiDivider from '$lib/ascii/AsciiDivider.svelte';
 	import AsciiRings from '$lib/ascii/AsciiRings.svelte';
 </script>
@@ -50,8 +49,6 @@
 	<SignUp />
 	<Footer />
 </div>
-
-<ThemeToggle />
 
 <style>
 	.finale {
