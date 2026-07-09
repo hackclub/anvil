@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { audit } from '../audit';
 import { feedSignup } from '../services/slackFeed';
+import { inviteToSignupChannels } from '../services/slackNotify';
 import { encryptColumn, decryptColumn } from '../crypto';
 import { flag, optional, required } from '../env';
 import type { User } from '../db/schema';
@@ -220,6 +221,7 @@ export async function upsertUserFromLogin(
 
 	if (!existing) {
 		feedSignup(user);
+		inviteToSignupChannels(user);
 		audit({
 			actorType: 'user',
 			actorId: user.id,
