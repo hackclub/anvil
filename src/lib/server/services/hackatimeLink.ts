@@ -1,8 +1,9 @@
-// Automatic Hackatime account linking. Resolution chain:
-// 1. public /users/{slack_uid}/stats -> data.{user_id, username}  (no key)
-// 2. public /users/{hca_id}/stats    -> same (hackatime resolves HCA ids)
-// 3. stats-key lookups by slack uid / email (work when HACKATIME_ADMIN_KEY is
-//    hackatime's shared STATS_API_KEY rather than a personal hka_ key)
+// Automatic Hackatime account linking. Resolution chain (each step is
+// admin-API-first inside hackatime.ts, so it works even for users who
+// enabled "disable public stats"):
+// 1. profile by slack uid (admin search_fuzzy + user/info, else public stats)
+// 2. profile by HCA id (public stats only - hackatime resolves HCA ids there)
+// 3. id-only lookups by slack uid / email
 // Also backfills the slack username - the platform's primary display name.
 // Called best-effort on login and on demand from the project page.
 import { eq } from 'drizzle-orm';
