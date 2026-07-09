@@ -15,7 +15,10 @@
 // - ship-time reads BYPASS the cache (they become the immutable snapshot)
 // - HACKATIME_MOCK=1 swaps in a deterministic fake so window math is testable
 import { flag, optional } from '../env';
+import { createLogger } from '$lib/log';
 import { SEASON_START } from '$lib/config/season';
+
+const log = createLogger('hackatime');
 
 const BASE = 'https://hackatime.hackclub.com/api/v1';
 const ADMIN_BASE = 'https://hackatime.hackclub.com/api/admin/v1';
@@ -123,9 +126,16 @@ async function adminAvailable(): Promise<boolean> {
 	if (adminOk !== null) return adminOk;
 
 	adminProbe ??= adminGet<{ valid?: boolean }>('/check')
-		.then((body) => (adminOk = body.valid === true))
+		.then((body) => {
+			adminOk = body.valid === true;
+			log.info('admin API probe', { available: adminOk });
+			return adminOk;
+		})
 		.catch((err) => {
-			if (err instanceof HttpError && (err.status === 401 || err.status === 403)) adminOk = false;
+			if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
+				adminOk = false;
+				log.warn('admin key rejected - falling back to public endpoints', { status: err.status });
+			}
 
 			adminProbe = null;
 			return false;

@@ -3,10 +3,13 @@
 // hold none of it at rest. A dead token throws, so the job retries and
 // eventually dead-letters visibly in /admin/jobs.
 import { eq } from 'drizzle-orm';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { fetchLiveProfile } from '../auth/hca';
 import { enqueue } from '../jobs';
 import { flag, optional, required } from '../env';
+
+const log = createLogger('airtable');
 
 export async function queueAirtableSync(projectId: number, shipId: number, reviewId?: string): Promise<void> {
 	await db().insert(schema.airtableSyncs).values({ projectId, shipId, reviewId }).onConflictDoNothing();
@@ -16,9 +19,10 @@ export async function queueAirtableSync(projectId: number, shipId: number, revie
 		// pg-boss drops the duplicate so we can't POST two Airtable records for
 		// one ship (the sweeper re-enqueues in-flight rows, racing this path)
 		await enqueue('airtable.sync', { shipId }, { singletonKey: `airtable-sync-${shipId}` });
+		log.info('sync queued', { projectId, shipId, reviewId: reviewId ?? null });
 	} catch (err) {
 		// the hourly sweeper picks up pending rows anyway
-		console.warn('[airtable] enqueue failed (row saved as pending):', err);
+		log.warn('enqueue failed (row saved as pending)', { err, capture: false, shipId });
 	}
 }
 
@@ -86,12 +90,14 @@ export async function syncShipToAirtable(shipId: number): Promise<string | 'dry-
 	if (!fields) return null;
 
 	if (!flag('AIRTABLE_ENABLED')) {
-		console.log('[airtable] dry-run (AIRTABLE_ENABLED=0), would create:', JSON.stringify(fields));
+		// PII is in `fields` - log only that a dry-run happened, never the payload.
+		log.info('dry-run (AIRTABLE_ENABLED=0), skipping create', { shipId });
 		return 'dry-run';
 	}
 
 	const baseId = required('AIRTABLE_BASE_ID');
 	const table = optional('AIRTABLE_TABLE', 'YSWS Project Submission');
+	log.debug('creating record', { shipId, table });
 	const res = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}`, {
 		method: 'POST',
 		headers: {

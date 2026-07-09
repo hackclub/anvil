@@ -1,5 +1,6 @@
 // The ship action: snapshot hours + project fields, open a pending ship.
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { audit } from '../audit';
 import { feedShip } from '../services/slackFeed';
@@ -9,6 +10,8 @@ import { MIN_SHIP_SECONDS } from '$lib/config/season';
 import type { Project, User } from '../db/schema';
 import { hackatimeIdentity, latestApprovedShip, projectKeys } from './queries';
 import { shipWindow, windowSeconds } from './windows';
+
+const log = createLogger('ships');
 
 export class ShipError extends Error {}
 
@@ -84,6 +87,14 @@ export async function createShip(project: Project, user: User): Promise<{ shipId
 		await tx.update(schema.projects).set({ shipStatus: 'pending' }).where(eq(schema.projects.id, project.id));
 
 		feedShip(user, project.title, ship.shipNumber, seconds);
+		log.info('ship created', {
+			userId: user.id,
+			projectId: project.id,
+			shipId: ship.id,
+			shipNumber: ship.shipNumber,
+			seconds,
+			keys: keys.length
+		});
 		audit({
 			actorType: 'user',
 			actorId: user.id,

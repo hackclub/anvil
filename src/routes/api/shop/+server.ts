@@ -4,7 +4,10 @@ import { json } from '@sveltejs/kit';
 import { asc, isNull } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
 import { publicUrl } from '$lib/server/services/storage';
+import { createLogger } from '$lib/log';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('api.shop');
 
 export const GET: RequestHandler = async () => {
 	try {
@@ -26,7 +29,9 @@ export const GET: RequestHandler = async () => {
 				.map((i) => ({ name: i.name, price: i.price, thumbnailUrl: publicUrl(i.thumbnailKey) })),
 			{ headers: { 'cache-control': 'public, max-age=300' } }
 		);
-	} catch {
+	} catch (err) {
+		// DB-less marketing mode returns [] on purpose; still surface real DB errors.
+		log.warn('catalog query failed - returning empty list', { err, capture: false });
 		return json([]);
 	}
 };

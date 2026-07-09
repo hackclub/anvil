@@ -1,7 +1,10 @@
 // PaperTrail-lite. Call audit() next to anything worth remembering - it
 // writes fire-and-forget and NEVER throws, so it can't break the action
 // it's describing.
+import { createLogger } from '$lib/log';
 import { db, schema } from './db';
+
+const log = createLogger('audit');
 
 export interface AuditEntry {
 	actorType: 'user' | 'sidekick' | 'admin' | 'system';
@@ -16,6 +19,17 @@ export interface AuditEntry {
 }
 
 export function audit(entry: AuditEntry): void {
+	// Mirror every audited action to the log stream too, so the ops timeline is
+	// visible in stdout/Sentry without a DB query. The DB row stays the source
+	// of truth; this is the breadcrumb.
+	log.info('audit', {
+		action: entry.action,
+		actorType: entry.actorType,
+		actorId: entry.actorId ?? null,
+		entityType: entry.entityType ?? null,
+		entityId: entry.entityId ?? null
+	});
+
 	db()
 		.insert(schema.auditLogs)
 		.values({
@@ -25,6 +39,6 @@ export function audit(entry: AuditEntry): void {
 		})
 		.then(
 			() => {},
-			(err) => console.warn('[audit] write failed:', entry.action, err)
+			(err) => log.warn('write failed', { err, capture: false, action: entry.action })
 		);
 }

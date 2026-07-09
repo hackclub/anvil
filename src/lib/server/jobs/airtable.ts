@@ -1,10 +1,12 @@
 // Unified YSWS DB sync worker + hourly sweeper for stragglers.
 import { and, eq, inArray, lt, sql } from 'drizzle-orm';
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { flag } from '../env';
 import { syncShipToAirtable } from '../services/airtable';
 import { enqueue, registerJob } from './index';
 
+const log = createLogger('jobs.airtable');
 const MAX_ATTEMPTS = 8;
 
 async function processSync(shipId: number): Promise<void> {
@@ -22,6 +24,7 @@ async function processSync(shipId: number): Promise<void> {
 
 		// stays pending until AIRTABLE_ENABLED
 		if (recordId === null) {
+			log.warn('sync failed permanently', { shipId, reason: 'ship missing or not approved' });
 			await db()
 				.update(schema.airtableSyncs)
 				.set({ status: 'failed', lastError: 'ship missing or not approved' })
@@ -30,22 +33,32 @@ async function processSync(shipId: number): Promise<void> {
 			return;
 		}
 
+		log.info('ship synced', { shipId, recordId });
 		await db()
 			.update(schema.airtableSyncs)
 			.set({ status: 'synced', airtableRecordId: recordId, syncedAt: new Date(), lastError: null })
 			.where(eq(schema.airtableSyncs.id, sync.id));
 	} catch (err) {
 		const attempts = sync.attempts + 1;
+		const deadLettered = attempts >= MAX_ATTEMPTS;
 		await db()
 			.update(schema.airtableSyncs)
 			.set({
 				attempts,
 				lastError: String(err),
 				// dead-letter after MAX_ATTEMPTS - visible in /admin/jobs
-				status: attempts >= MAX_ATTEMPTS ? 'failed' : 'pending'
+				status: deadLettered ? 'failed' : 'pending'
 			})
 			.where(eq(schema.airtableSyncs.id, sync.id));
 
+		// only escalate to a Sentry Issue once we give up; transient retries are noise.
+		log[deadLettered ? 'error' : 'warn']('sync attempt failed', {
+			err,
+			capture: deadLettered,
+			shipId,
+			attempts,
+			deadLettered
+		});
 		throw err; // let pg-boss retry with backoff
 	}
 }
@@ -85,5 +98,7 @@ registerJob({
 		// sweeper can't race the original into a duplicate Airtable record
 		for (const r of rows)
 			await enqueue('airtable.sync', { shipId: r.shipId }, { singletonKey: `airtable-sync-${r.shipId}` });
+
+		if (rows.length) log.info('sweep re-enqueued', { count: rows.length });
 	}
 });

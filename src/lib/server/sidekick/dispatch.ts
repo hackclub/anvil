@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, exists, ilike, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 
+import { createLogger } from '$lib/log';
 import { db, schema } from '../db';
 import { fetchLiveProfile } from '../auth/hca';
 import { audit } from '../audit';
@@ -12,6 +13,8 @@ import { SidekickError, submitReviewAction, updateReviewAction } from './reviewA
 
 type Json = Record<string, unknown>;
 
+const log = createLogger('sidekick');
+
 // every mutating protocol action lands in the audit trail
 const MUTATING = new Set([
 	'SUBMIT_REVIEW_ACTION',
@@ -23,7 +26,28 @@ const MUTATING = new Set([
 ]);
 
 export async function dispatch(action: string, input: Json): Promise<Json> {
-	const result = await dispatchInner(action, input);
+	const start = performance.now();
+	const mutating = MUTATING.has(action);
+	log.info('action', {
+		action,
+		mutating,
+		reviewerId: typeof input.reviewerId === 'string' ? input.reviewerId : null
+	});
+	let result: Json;
+	try {
+		result = await dispatchInner(action, input);
+	} catch (err) {
+		// SidekickError is an expected protocol rejection (validation/not-found);
+		// the endpoint maps it to 4xx, so it's a warn, not a captured exception.
+		if (err instanceof SidekickError) {
+			log.warn('action rejected', { action, code: err.code, ms: Math.round(performance.now() - start) });
+		} else {
+			log.exception('action threw', err, { action, ms: Math.round(performance.now() - start) });
+		}
+
+		throw err;
+	}
+	log.info('action ok', { action, mutating, ms: Math.round(performance.now() - start) });
 	if (MUTATING.has(action)) {
 		audit({
 			actorType: 'sidekick',
@@ -467,7 +491,7 @@ function scheduleOrderStatusDm(orderId: number): void {
 				row.orders.userNotes ?? undefined
 			);
 		} catch (err) {
-			console.warn('[slack-dm] order status DM failed:', err);
+			log.warn('order status DM failed', { err, capture: false, orderId });
 		}
 	}, 2000);
 }
