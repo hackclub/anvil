@@ -13,8 +13,8 @@ interface Recipient {
 	slackId: string | null;
 }
 
-// #anvil-bulletin, #anvil-help - every fresh signup gets dropped into both.
-const SIGNUP_CHANNEL_IDS = ['C0BFHPCH9D1', 'C0BFN1F5TBQ'];
+// #anvil-bulletin, #anvil-help, #anvil-chat - every fresh signup gets dropped into all three.
+const SIGNUP_CHANNEL_IDS = ['C0BFHPCH9D1', 'C0BFN1F5TBQ', 'C0BGYG2NELW'];
 
 /** Invites a new user into the standard signup channels. Requires the bot
  *  token to also carry channels:write/groups:write (conversations.invite) -
