@@ -59,7 +59,12 @@ async function pollSources(kinds: string[]): Promise<void> {
 			if (prev != null && hoursSince <= ECONOMY.starVelocityFlag.windowHours) {
 				const delta = result.value - prev;
 				const ratioPerDay = (delta / Math.max(prev, 10)) * (24 / Math.max(hoursSince, 1));
-				if (delta > ECONOMY.starVelocityFlag.maxDelta || ratioPerDay > ECONOMY.starVelocityFlag.maxRatioPerDay) {
+				const MIN_STARS_THRESHOLD = 15;
+
+				if (
+					result.value >= MIN_STARS_THRESHOLD &&
+					(delta > ECONOMY.starVelocityFlag.maxDelta || ratioPerDay > ECONOMY.starVelocityFlag.maxRatioPerDay)
+				) {
 					await db()
 						.update(schema.projects)
 						.set({ scoreFlagged: true })
