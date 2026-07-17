@@ -1,7 +1,9 @@
 // SUBMIT_REVIEW_ACTION / UPDATE_REVIEW_ACTION logic.
-// Flow: every `approve` creates a HELD review (ship -> pending_hq); Sidekick's
+// Flow: a plain `approve` creates a HELD review (ship -> pending_hq); Sidekick's
 // own RBAC decides who may `authorize`, which finalizes the approval (hours,
-// sparks payout, Airtable sync). `deauthorize` reverts to pending.
+// sparks payout, Airtable sync). `deauthorize` reverts to pending. When Sidekick
+// marks the caller as an HQ reviewer (`isHq`), `approve` finalizes outright in a
+// single step instead of parking the ship in the pending_hq queue.
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { rateForLevel } from '$lib/config/economy';
@@ -61,10 +63,57 @@ async function setShipAndProjectStatus(
 		.where(eq(schema.projects.id, projectId));
 }
 
+/**
+ * Finalize an approval: ship/project -> approved, pay sparks at the project's
+ * current level (idempotent), queue the Airtable sync, and DM the author. Shared
+ * by `authorize` (second sign-off on a held approval) and an HQ `approve` (which
+ * finalizes outright). `review` must already be non-held.
+ */
+async function finalizeApproval(ship: Ship, review: Review, hours: number, reviewerId: string): Promise<TimelineEvent> {
+	await setShipAndProjectStatus(ship.id, ship.projectId, 'approved', {
+		hoursAssigned: hours,
+		decidedAt: new Date()
+	});
+
+	// sparks payout at the project's CURRENT applied level (idempotent)
+	// prettier-ignore
+	const [project] = await db()
+		.select()
+		.from(schema.projects)
+		.where(eq(schema.projects.id, ship.projectId));
+
+	const rate = rateForLevel(project.level);
+	const sparks = Math.round(hours * rate * 100) / 100;
+	await award({
+		userId: ship.userId,
+		kind: 'earn_ship',
+		amount: sparks,
+		projectId: ship.projectId,
+		shipId: ship.id,
+		level: project.level,
+		rate,
+		hoursBasis: hours,
+		createdByActorId: reviewerId
+	});
+
+	await queueAirtableSync(ship.projectId, ship.id, review.id);
+	// DM when sparks actually land - never on a held approval, which deauthorize
+	// can still pull back
+	const authored = await projectAndAuthor(ship);
+	if (authored) {
+		dmShipApproved(authored.users, authored.projects, ship.shipNumber, sparks, review.feedback ?? '');
+	}
+
+	return reviewEvent(review);
+}
+
 export interface ReviewInput {
 	shipId: number;
 	reviewerId: string;
 	action: 'approve' | 'reject' | 'comment' | 'internal_comment' | 'authorize' | 'deauthorize';
+	// Sidekick sets this when the reviewer has HQ authority; an HQ `approve`
+	// finalizes outright instead of parking the ship in the pending_hq queue.
+	isHq?: boolean;
 	hoursAssigned?: number;
 	feedbackMessage?: string;
 	justification?: string;
@@ -86,6 +135,10 @@ export async function submitReviewAction(input: ReviewInput): Promise<TimelineEv
 				throw new SidekickError('VALIDATION_ERROR', 'hoursAssigned is required for approve');
 			}
 
+			// an HQ reviewer's approval finalizes outright - no held review, no
+			// pending_hq detour, no second sign-off required
+			const isHq = input.isHq === true;
+
 			const [review] = await db()
 				.insert(schema.reviews)
 				.values({
@@ -93,13 +146,17 @@ export async function submitReviewAction(input: ReviewInput): Promise<TimelineEv
 					projectId: ship.projectId,
 					reviewerActorId: input.reviewerId,
 					kind: 'approval',
-					held: true,
+					held: !isHq,
 					hoursAssigned: input.hoursAssigned,
 					feedback: input.feedbackMessage ?? '',
 					justification: input.justification ?? '',
 					fields: input.fields
 				})
 				.returning();
+
+			if (isHq) {
+				return finalizeApproval(ship, review, input.hoursAssigned, input.reviewerId);
+			}
 
 			await setShipAndProjectStatus(ship.id, ship.projectId, 'pending_hq');
 			return reviewEvent(review);
@@ -120,41 +177,7 @@ export async function submitReviewAction(input: ReviewInput): Promise<TimelineEv
 				.where(eq(schema.reviews.id, held.id))
 				.returning();
 
-			await setShipAndProjectStatus(ship.id, ship.projectId, 'approved', {
-				hoursAssigned: hours,
-				decidedAt: new Date()
-			});
-
-			// sparks payout at the project's CURRENT applied level (idempotent)
-			// prettier-ignore
-			const [project] = await db()
-				.select()
-				.from(schema.projects)
-				.where(eq(schema.projects.id, ship.projectId));
-
-			const rate = rateForLevel(project.level);
-			const sparks = Math.round(hours * rate * 100) / 100;
-			await award({
-				userId: ship.userId,
-				kind: 'earn_ship',
-				amount: sparks,
-				projectId: ship.projectId,
-				shipId: ship.id,
-				level: project.level,
-				rate,
-				hoursBasis: hours,
-				createdByActorId: input.reviewerId
-			});
-
-			await queueAirtableSync(ship.projectId, ship.id, review.id);
-			// DM on authorize - when sparks actually land - never on the held
-			// approval, which deauthorize can still pull back
-			const authored = await projectAndAuthor(ship);
-			if (authored) {
-				dmShipApproved(authored.users, authored.projects, ship.shipNumber, sparks, review.feedback ?? '');
-			}
-
-			return reviewEvent(review);
+			return finalizeApproval(ship, review, hours, input.reviewerId);
 		}
 
 		case 'deauthorize': {
