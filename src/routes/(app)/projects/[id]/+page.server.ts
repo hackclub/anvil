@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { and, asc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
 import { requireProject } from '$lib/server/projects';
 import { currentWindow, hackatimeIdentity, projectKeys } from '$lib/server/ships/queries';
@@ -250,6 +250,21 @@ export const actions: Actions = {
 		}
 
 		await db().transaction(async (tx) => {
+			// links left behind by soft-deleted projects don't hold their key hostage -
+			// without this, the (userId, key) unique index makes the insert below a no-op
+			await tx
+				.delete(schema.hackatimeProjectLinks)
+				.where(
+					and(
+						eq(schema.hackatimeProjectLinks.userId, user.id),
+						inArray(schema.hackatimeProjectLinks.hackatimeKey, keys),
+						inArray(
+							schema.hackatimeProjectLinks.projectId,
+							tx.select({ id: schema.projects.id }).from(schema.projects).where(isNotNull(schema.projects.deletedAt))
+						)
+					)
+				);
+
 			await tx
 				.delete(schema.hackatimeProjectLinks)
 				.where(

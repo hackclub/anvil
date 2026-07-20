@@ -137,17 +137,28 @@ export const actions: Actions = {
 		if (!key) return fail(400, { error: 'missing hackatime key' });
 
 		const [existing] = await db()
-			.select()
+			.select({
+				id: schema.hackatimeProjectLinks.id,
+				projectId: schema.hackatimeProjectLinks.projectId,
+				projectDeletedAt: schema.projects.deletedAt
+			})
 			.from(schema.hackatimeProjectLinks)
+			.innerJoin(schema.projects, eq(schema.hackatimeProjectLinks.projectId, schema.projects.id))
 			.where(and(eq(schema.hackatimeProjectLinks.userId, user.id), eq(schema.hackatimeProjectLinks.hackatimeKey, key)));
 
-		if (existing) {
-			if (existing.projectId !== project.id) {
+		const unlinking = existing?.projectId === project.id;
+		if (unlinking) {
+			await db().delete(schema.hackatimeProjectLinks).where(eq(schema.hackatimeProjectLinks.id, existing.id));
+		} else {
+			if (existing && !existing.projectDeletedAt) {
 				return fail(400, { error: `"${key}" is already linked to another project` });
 			}
 
-			await db().delete(schema.hackatimeProjectLinks).where(eq(schema.hackatimeProjectLinks.id, existing.id));
-		} else {
+			// a link left behind by a soft-deleted project doesn't hold the key hostage
+			if (existing) {
+				await db().delete(schema.hackatimeProjectLinks).where(eq(schema.hackatimeProjectLinks.id, existing.id));
+			}
+
 			await db()
 				.insert(schema.hackatimeProjectLinks)
 				.values({ userId: user.id, projectId: project.id, hackatimeKey: key })
@@ -157,7 +168,7 @@ export const actions: Actions = {
 		audit({
 			actorType: 'user',
 			actorId: user.id,
-			action: existing ? 'project.unlink_key' : 'project.link_key',
+			action: unlinking ? 'project.unlink_key' : 'project.link_key',
 			entityType: 'project',
 			entityId: project.id,
 			data: { key }
@@ -168,12 +179,14 @@ export const actions: Actions = {
 
 	delete: async ({ locals, params }) => {
 		const project = await requireProject(params.id, locals.user!);
-		// projects with any ship history are never hard-deleted (audit trail)
-		// prettier-ignore
-		await db()
-			.update(schema.projects)
-			.set({ deletedAt: new Date() })
-			.where(eq(schema.projects.id, project.id));
+		// projects with any ship history are never hard-deleted (audit trail);
+		// hackatime links ARE dropped so the keys become linkable elsewhere
+		// (ships keep their own keySeconds snapshot)
+		await db().transaction(async (tx) => {
+			await tx.update(schema.projects).set({ deletedAt: new Date() }).where(eq(schema.projects.id, project.id));
+
+			await tx.delete(schema.hackatimeProjectLinks).where(eq(schema.hackatimeProjectLinks.projectId, project.id));
+		});
 
 		audit({
 			actorType: 'user',
