@@ -1,5 +1,7 @@
-// Program-wide constants. Hours are only ever counted from SEASON_START
-// forward - Hackatime activity before the program began doesn't exist to us.
+// Program-wide constants. SEASON_START anchors ship windows (shippable hours
+// are only counted from it forward) and gates which Hackatime projects we
+// list: a project must have a heartbeat since SEASON_START to appear, though
+// its displayed total counts all time ever tracked on it.
 export const SEASON_START = new Date('2026-07-01T00:00:00Z');
 
 /** Minimum tracked seconds (within the ship window) before a project can ship. */

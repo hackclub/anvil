@@ -72,7 +72,7 @@
 		};
 		/** keys linked to this project, with seconds in the current window */
 		linkedKeys: KeyInfo[];
-		/** ALL of the user's hackatime projects, seconds since season */
+		/** ALL of the user's hackatime projects (active this season), all-time seconds */
 		availableKeys: KeyInfo[];
 		/** hackatime key -> title of the OTHER project it's assigned to */
 		assignedElsewhere: Record<string, string>;
@@ -184,7 +184,7 @@
 	// svelte-ignore state_referenced_locally
 	let staged = $state<string[]>(linkedKeys.map((k) => k.key));
 
-	// a staged key borrows its season seconds until the server reports
+	// a staged key borrows its all-time seconds until the server reports
 	// window seconds after the selection is confirmed
 	const stagedSeconds = (key: string): number =>
 		linkedKeys.find((k) => k.key === key)?.seconds ?? availableKeys.find((k) => k.key === key)?.seconds ?? 0;
@@ -202,7 +202,7 @@
 	}
 
 	// ONE stable list: keys never move when toggled - the checkbox flips in
-	// place. Linked keys show window seconds; the rest show season totals.
+	// place. Linked keys show window seconds; the rest show all-time totals.
 	interface ListKey {
 		key: string;
 		linked: boolean;

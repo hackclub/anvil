@@ -343,7 +343,12 @@ async function fetchProjectTotals(ident: HackatimeIdentity, since: Date, until?:
 	return Array.isArray(body) ? body : body.projects;
 }
 
-/** All of a user's Hackatime projects since season start (for the key picker). */
+/**
+ * All of a user's Hackatime projects (for the key picker). Totals are
+ * ALL-TIME - every second ever tracked on the key counts - but only projects
+ * with a heartbeat since SEASON_START are listed, so long-abandoned keys
+ * don't clutter the picker.
+ */
 export async function listUserProjects(ident: HackatimeIdentity): Promise<HackatimeProject[]> {
 	if (mocked()) {
 		return MOCK_KEYS.map((name) => ({
@@ -353,7 +358,7 @@ export async function listUserProjects(ident: HackatimeIdentity): Promise<Hackat
 	}
 
 	return swr(`projects:${ident.id}`, async () => {
-		const projects = await fetchProjectTotals(ident, SEASON_START);
+		const projects = await fetchProjectTotals(ident, new Date(0));
 
 		const recency = (p: HackatimeProject) => {
 			if (p.most_recent_heartbeat == null) return 0;
@@ -368,6 +373,7 @@ export async function listUserProjects(ident: HackatimeIdentity): Promise<Hackat
 
 		return projects
 			.filter((p) => p.name !== 'Other' && p.name !== '<<LAST_PROJECT>>')
+			.filter((p) => recency(p) >= SEASON_START.getTime())
 			.sort((a, b) => recency(b) - recency(a)); // most recently active first
 	});
 }
