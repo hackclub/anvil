@@ -10,6 +10,7 @@ import { feedSignup } from '../services/slackFeed';
 import { inviteToSignupChannels } from '../services/slackNotify';
 import { encryptColumn, decryptColumn } from '../crypto';
 import { flag, optional, required } from '../env';
+import { PROGRAM_CLOSED } from '$lib/config/season';
 import type { User } from '../db/schema';
 
 // NOTE: the docs mention a legal_name scope but the app registration UI does
@@ -218,6 +219,10 @@ export function profileFrom(me: HcaMe): HcaProfile {
 	};
 }
 
+/** Thrown when someone without an account tries to log in after the program
+ *  closed - existing participants keep their access. */
+export class RegistrationClosedError extends Error {}
+
 export async function upsertUserFromLogin(
 	me: HcaMe,
 	tokens: { accessToken: string; refreshToken: string | null; expiresAt: Date }
@@ -228,6 +233,11 @@ export async function upsertUserFromLogin(
 		.select({ id: schema.users.id })
 		.from(schema.users)
 		.where(eq(schema.users.hcaId, cols.hcaId));
+
+	// registrations are closed once the program ends - only known accounts pass
+	if (!existing && PROGRAM_CLOSED) {
+		throw new RegistrationClosedError('registrations are closed');
+	}
 
 	const [user] = await db()
 		.insert(schema.users)

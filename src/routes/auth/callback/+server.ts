@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { exchangeCode, fetchMe, upsertUserFromLogin } from '$lib/server/auth/hca';
+import { exchangeCode, fetchMe, RegistrationClosedError, upsertUserFromLogin } from '$lib/server/auth/hca';
 import { createSession } from '$lib/server/auth/session';
 import { safeNext } from '$lib/server/auth/redirect';
 import { ensureHackatimeLinked } from '$lib/server/services/hackatimeLink';
@@ -25,7 +25,17 @@ export const GET: RequestHandler = async ({ cookies, url, request, getClientAddr
 
 	const tokens = await exchangeCode(code, url.origin);
 	const me = await fetchMe(tokens.accessToken);
-	const user = await upsertUserFromLogin(me, tokens);
+	let user;
+	try {
+		user = await upsertUserFromLogin(me, tokens);
+	} catch (err) {
+		if (err instanceof RegistrationClosedError) {
+			log.info('signup blocked: program closed', { hcaId: me.id });
+			error(403, 'anvil has ended - new signups are closed. thanks for your interest!');
+		}
+
+		throw err;
+	}
 
 	if (user.isBanned) {
 		log.warn('banned account blocked at login', { userId: user.id });

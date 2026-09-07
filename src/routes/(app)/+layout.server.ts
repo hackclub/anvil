@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { publicUser } from '$lib/server/publicUser';
 import { avatarUrl, gravatarUrl } from '$lib/server/avatar';
 import { balanceOf } from '$lib/server/economy/ledger';
+import { PROGRAM_CLOSED } from '$lib/config/season';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url, route }) => {
@@ -27,6 +28,7 @@ export const load: LayoutServerLoad = async ({ locals, url, route }) => {
 		avatar: avatarUrl(u.slackId, u.email),
 		avatarFallback: gravatarUrl(u.email),
 		balance: await balanceOf(u.id),
-		verificationNag: !u.yswsEligible && u.verificationStatus === 'pending'
+		verificationNag: !u.yswsEligible && u.verificationStatus === 'pending',
+		programClosed: PROGRAM_CLOSED
 	};
 };

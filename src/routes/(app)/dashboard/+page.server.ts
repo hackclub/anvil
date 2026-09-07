@@ -1,5 +1,6 @@
 import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
+import { PROGRAM_CLOSED } from '$lib/config/season';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -29,5 +30,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.from(schema.orders)
 		.where(eq(schema.orders.userId, userId));
 
-	return { projects, hasShipped: ships.n > 0, hasOrdered: orders.n > 0 };
+	return { projects, hasShipped: ships.n > 0, hasOrdered: orders.n > 0, programClosed: PROGRAM_CLOSED };
 };

@@ -5,9 +5,13 @@ import { createShip, ShipError } from '$lib/server/ships/ship';
 import { currentWindow, hackatimeIdentity, projectKeys } from '$lib/server/ships/queries';
 import { getKeySeconds } from '$lib/server/services/hackatime';
 import { publicUrl } from '$lib/server/services/storage';
+import { CLOSED_NOTICE, PROGRAM_CLOSED } from '$lib/config/season';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
+	// shipping closed with the program - the project page explains why
+	if (PROGRAM_CLOSED) redirect(303, `/projects/${params.id}`);
+
 	const user = locals.user!;
 	const project = await requireProject(params.id, user);
 
@@ -43,6 +47,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 export const actions: Actions = {
 	confirm: async ({ locals, params }) => {
+		if (PROGRAM_CLOSED) return fail(403, { error: CLOSED_NOTICE });
+
 		const user = locals.user!;
 		const project = await requireProject(params.id, user);
 

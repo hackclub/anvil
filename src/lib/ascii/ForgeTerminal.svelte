@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { forgeWindow } from './forgeWindow.svelte';
+	import { PROGRAM_CLOSED } from '$lib/config/season';
 	import { measureCharWidth } from './measureChar';
 
 	interface Props {
@@ -58,7 +59,8 @@
 		dragging = false;
 	}
 
-	const BTN_LABELS = ['▸ enter platform'];
+	// the program is over: existing participants sign in, nobody new joins
+	const BTN_LABELS = [PROGRAM_CLOSED ? '▸ sign in' : '▸ enter platform'];
 
 	onMount(() => {
 		const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -200,13 +202,14 @@
 			const midX = x0 + Math.floor(winW / 2);
 			const cen = (s: string) => midX - Math.floor(s.length / 2);
 
-			// heading (centered) - "ready to ship?"
-			const h1 = 'ready to ';
-			const h2 = 'ship';
-			const hx = cen('ready to ship?');
+			// heading (centered) - "ready to ship?", or the closing notice
+			const h1 = PROGRAM_CLOSED ? 'anvil has ' : 'ready to ';
+			const h2 = PROGRAM_CLOSED ? 'ended' : 'ship';
+			const h3 = PROGRAM_CLOSED ? '.' : '?';
+			const hx = cen(h1 + h2 + h3);
 			text(hx, y0 + 4, h1, 3);
 			text(hx + h1.length, y0 + 4, h2, 2);
-			text(hx + h1.length + h2.length, y0 + 4, '?', 3);
+			text(hx + h1.length + h2.length, y0 + 4, h3, 3);
 
 			// buttons (invert on hover)
 			for (let i = 0; i < btnCells.length; i++) {
@@ -344,8 +347,16 @@
 
 	<!-- accessible content (visually hidden; the window above is aria-hidden) -->
 	<div class="sr-only">
-		<h2>ready to ship?</h2>
-		<p>Ship one good tool and watch it run red-hot. Every star, install, and download stokes the fire.</p>
+		{#if PROGRAM_CLOSED}
+			<h2>anvil has ended.</h2>
+			<p>
+				Submissions, shipping, and signups are closed. If you already have an account, you can still sign in to check
+				your ships and spend your sparks.
+			</p>
+		{:else}
+			<h2>ready to ship?</h2>
+			<p>Ship one good tool and watch it run red-hot. Every star, install, and download stokes the fire.</p>
+		{/if}
 	</div>
 </div>
 

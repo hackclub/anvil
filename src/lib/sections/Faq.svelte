@@ -1,9 +1,18 @@
 <script lang="ts">
 	import SectionHeading from '$lib/components/SectionHeading.svelte';
 	import { gridSnap } from '$lib/ascii/gridSnap';
+	import { PROGRAM_CLOSED } from '$lib/config/season';
 
 	// answers may carry (trusted, hand-written) inline links
 	const faqs = [
+		...(PROGRAM_CLOSED
+			? [
+					{
+						q: 'can I still join?',
+						a: "No - Anvil has ended. We're no longer accepting submissions, shipping is disabled, and signups are closed. If you already have an account, you can still sign in to see your ships and spend your sparks in the shop."
+					}
+				]
+			: []),
 		{
 			q: 'what counts as a "tool"?',
 			a: 'Anything that helps other hackers build: a library, a CLI, an API wrapper, a design system, a really good tutorial or guide, a starter template. If it saves someone else time, it counts.'

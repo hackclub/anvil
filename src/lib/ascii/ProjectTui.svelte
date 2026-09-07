@@ -5,6 +5,7 @@
 	// rows highlight like a selection bar, and the guide buddy walks new
 	// users through create → track → ship → review. No emojis - glyphs only.
 	import { enhance } from '$app/forms';
+	import { PROGRAM_CLOSED } from '$lib/config/season';
 	import { onMount } from 'svelte';
 	import TuiConfirm from './TuiConfirm.svelte';
 	import { measureCharWidth } from './measureChar';
@@ -234,7 +235,9 @@
 
 	const inFlight = $derived(project.shipStatus === 'pending' || project.shipStatus === 'pending_hq');
 
-	const canShip = $derived(!project.locked && !inFlight && effLinkedKeys.length > 0 && totalSeconds >= minShipSeconds);
+	const canShip = $derived(
+		!PROGRAM_CLOSED && !project.locked && !inFlight && effLinkedKeys.length > 0 && totalSeconds >= minShipSeconds
+	);
 	// quest completion goes through the TUI confirm; share quests collect the
 	// proof URL via the modal's input, and only a "yes" submits the form
 	let questPending = $state<QuestInfo | null>(null);
@@ -304,6 +307,20 @@
 					// the "!" lives inside the accent segment so it can't wrap alone
 					{ text: 'confirm selection!', cls: 'c2' },
 					{ text: 'you can always change the selection later, too!' }
+				]
+			};
+		}
+
+		// the program is over - never nudge anyone towards a ship they can't make
+		if (PROGRAM_CLOSED) {
+			return {
+				face: '[ ^-^ ]',
+				segs: [
+					...(project.shipStatus === 'approved'
+						? [{ text: 'your last ship got you ' }, { text: `${fmtSparks(lastShipSparks)} ✶!!`, cls: 'c2' }]
+						: []),
+					{ text: 'anvil has ended, so this project can no longer be shipped. thank you for building with us! ' },
+					{ text: '<3', cls: 'c2' }
 				]
 			};
 		}
@@ -644,7 +661,7 @@
 			// it leads to the ship REVIEW page (preflight checks), never ships directly
 			btns.push({
 				id: 'ship',
-				label: `▸ ship - ${fmtHM(totalSeconds)}`,
+				label: PROGRAM_CLOSED ? '▸ shipping closed' : `▸ ship - ${fmtHM(totalSeconds)}`,
 				type: 'link',
 				href: `/projects/${project.id}/ship`,
 				primary: true,
@@ -681,7 +698,7 @@
 		}
 
 		// ship-blocked hint (when the buddy isn't already explaining it)
-		if (confirmed && !canShip && !project.locked && !inFlight && effLinkedKeys.length > 0) {
+		if (confirmed && !PROGRAM_CLOSED && !canShip && !project.locked && !inFlight && effLinkedKeys.length > 0) {
 			row(
 				s(
 					`track at least ${Math.round(minShipSeconds / 60)} minutes to ship - ${fmtHM(totalSeconds)} counted so far.`,

@@ -44,7 +44,11 @@
 					if (img.src !== data.avatarFallback) img.src = data.avatarFallback;
 				}}
 			/>
-			<span class="prompt">anvil@<strong>{data.user.username}</strong> ~/</span>
+			<span class="prompt">
+				anvil@
+				<strong>{data.user.username}</strong>
+				~/
+			</span>
 		</div>
 		<nav class="topnav">
 			{#each tabs as t (t.href)}
@@ -76,6 +80,15 @@
 			<button type="submit">logout</button>
 		</form>
 	</header>
+
+	{#if data.programClosed}
+		<div class="closed">
+			<span class="dim">!</span>
+			<strong>anvil has ended.</strong>
+			new projects and shipping are closed, and we're not taking new signups. ships already in review will still be reviewed,
+			and your sparks stay spendable in the shop.
+		</div>
+	{/if}
 
 	{#if data.verificationNag}
 		<div class="nag">
@@ -218,6 +231,18 @@
 		&:hover {
 			color: var(--accent);
 			border-color: var(--accent);
+		}
+	}
+
+	.closed {
+		padding: 0.7rem clamp(1rem, 4vw, 3rem);
+		border-bottom: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+		background: color-mix(in srgb, var(--accent) 12%, transparent);
+		font-size: var(--fs-sm);
+		line-height: 1.7;
+
+		strong {
+			color: var(--accent);
 		}
 	}
 
