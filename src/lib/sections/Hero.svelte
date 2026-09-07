@@ -1,6 +1,7 @@
 <script lang="ts">
 	import TerminalButton from '$lib/components/TerminalButton.svelte';
 	import RotatingWord from '$lib/components/RotatingWord.svelte';
+	import { PROGRAM_CLOSED } from '$lib/config/season';
 
 	const tools = ['tool', 'guide', 'library'];
 	const prizes = ['licenses', 'subscriptions', 'devtools'];
@@ -19,14 +20,27 @@
 			we ship you
 			<RotatingWord words={prizes} delay={1400} />
 		</h1>
-		<p class="sub">
-			build anything that helps other hackers make cool stuff. the more it gets
-			<span class="accent">used</span>, the better your reward gets.
-		</p>
-		<div class="cta">
-			<TerminalButton label="> enter platform" variant="primary" href="/auth/login" />
-			<TerminalButton label="how it works" href="#how" />
-		</div>
+		{#if PROGRAM_CLOSED}
+			<p class="closed">
+				<strong>anvil has ended.</strong>
+				we're no longer accepting submissions - shipping and signups are closed. if you already have an account, you can still
+				sign in to check your ships and spend your sparks.
+			</p>
+			<div class="cta">
+				<TerminalButton label="> sign in" variant="primary" href="/auth/login" />
+				<TerminalButton label="what was anvil?" href="#how" />
+			</div>
+		{:else}
+			<p class="sub">
+				build anything that helps other hackers make cool stuff. the more it gets
+				<span class="accent">used</span>
+				, the better your reward gets.
+			</p>
+			<div class="cta">
+				<TerminalButton label="> enter platform" variant="primary" href="/auth/login" />
+				<TerminalButton label="how it works" href="#how" />
+			</div>
+		{/if}
 	</div>
 </section>
 
@@ -82,6 +96,21 @@
 		max-width: 52ch;
 		margin: 0 0 1.75rem;
 		line-height: 1.8;
+	}
+
+	/* closure notice - same single type size, boxed so it reads as a bulletin */
+	.closed {
+		font-size: var(--fs-md);
+		line-height: 1.8;
+		max-width: 52ch;
+		margin: 0 0 1.75rem;
+		padding: 0.85rem 1.5ch;
+		border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+
+		strong {
+			color: var(--accent);
+			font-weight: 700;
+		}
 	}
 
 	.cta {

@@ -9,6 +9,10 @@
 	const inReview = $derived(data.projects.filter((p) => p.shipStatus === 'pending' || p.shipStatus === 'pending_hq'));
 
 	const motd: MotdSegment[] = $derived.by(() => {
+		if (data.programClosed) {
+			return [{ text: 'anvil has ended - thank you for building with us! ' }, { text: '<3', accent: true }];
+		}
+
 		if (data.projects.length === 0) return [{ text: 'start planning your first project below!' }];
 
 		if (!data.hasShipped) return [{ text: 'done with a project? click on one, then ship it!' }];
@@ -60,7 +64,9 @@
 		</p>
 	{/if}
 
-	{#if data.projects.length === 0}
+	{#if data.projects.length === 0 && data.programClosed}
+		<p class="empty dim">anvil has ended, and new projects can't be created anymore.</p>
+	{:else if data.projects.length === 0}
 		<!-- the whole empty state - heading included - lives in ONE ascii host -->
 		<FlameButton
 			heading="~/projects"
@@ -75,7 +81,9 @@
 				<span class="dim">~/</span>
 				projects
 			</h1>
-			<a class="new" href="/projects/new">[ + new project ]</a>
+			{#if !data.programClosed}
+				<a class="new" href="/projects/new">[ + new project ]</a>
+			{/if}
 		</div>
 		<ul class="projects">
 			{#each data.projects as p (p.id)}
@@ -118,6 +126,10 @@
 				color: var(--bg);
 			}
 		}
+	}
+
+	.empty {
+		line-height: 1.7;
 	}
 
 	.head {

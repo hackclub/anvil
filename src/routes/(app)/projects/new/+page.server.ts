@@ -5,7 +5,8 @@ import { storeUpload, UploadError } from '$lib/server/services/storage';
 import { ensureInferredSources } from '$lib/server/services/traction/manage';
 import { audit } from '$lib/server/audit';
 import { feedNewProject } from '$lib/server/services/slackFeed';
-import type { Actions } from './$types';
+import { CLOSED_NOTICE, PROGRAM_CLOSED } from '$lib/config/season';
+import type { Actions, PageServerLoad } from './$types';
 
 const projectSchema = z.object({
 	title: z.string().trim().min(1, 'title is required').max(80, 'keep the title under 80 chars'),
@@ -14,8 +15,17 @@ const projectSchema = z.object({
 	repoUrl: z.union([z.literal(''), z.url('repo link must be a URL')]).default('')
 });
 
+// the program is over - nothing new gets submitted
+export const load: PageServerLoad = () => {
+	if (PROGRAM_CLOSED) redirect(303, '/dashboard');
+
+	return {};
+};
+
 export const actions: Actions = {
 	create: async ({ locals, request }) => {
+		if (PROGRAM_CLOSED) return fail(403, { error: CLOSED_NOTICE });
+
 		const form = await request.formData();
 		const parsed = projectSchema.safeParse({
 			title: String(form.get('title') ?? ''),
